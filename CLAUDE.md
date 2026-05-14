@@ -28,9 +28,9 @@ AI-powered compliance research tool for dual-jurisdiction sanctions analysis (US
 The LLM is swappable via three environment variables. **Never hardcode model references.**
 
 ```
-LLM_BASE_URL=       # e.g., https://api.mistral.ai/v1 or http://localhost:11434/v1
-LLM_MODEL_NAME=     # e.g., mistral-large-latest or ministral-14b
-LLM_API_KEY=        # API key (empty string for local Ollama)
+SSA_LLM_BASE_URL=       # e.g., https://api.mistral.ai/v1 or http://localhost:11434/v1
+SSA_LLM_MODEL_NAME=     # e.g., mistral-large-latest or ministral-14b
+SSA_LLM_API_KEY=        # API key (empty string for local Ollama)
 ```
 
 All LLM calls go through a single abstraction layer so swapping providers requires zero code changes.
@@ -55,6 +55,7 @@ sanctions-screening-assistant/
 │   │   ├── main.py               # FastAPI app entry point
 │   │   ├── config.py             # Settings via pydantic-settings (env vars)
 │   │   ├── dependencies.py       # FastAPI dependency injection
+│   │   ├── exceptions.py        # Domain-specific exception classes
 │   │   │
 │   │   ├── api/
 │   │   │   ├── routes/
@@ -106,6 +107,7 @@ sanctions-screening-assistant/
 │   ├── pipeline/
 │   │   ├── __init__.py
 │   │   ├── runner.py             # Main pipeline orchestrator
+│   │   ├── models.py            # Pydantic models (IngestionResult, AcquisitionResult)
 │   │   ├── sources/
 │   │   │   ├── ofac_sdn.py       # OFAC SDN CSV parser
 │   │   │   ├── ofac_nonsdn.py    # OFAC Non-SDN list parser
@@ -443,7 +445,7 @@ uv run ruff format .              # Format (replaces black)
 
 ```toml
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]

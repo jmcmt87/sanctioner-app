@@ -73,3 +73,8 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+
+[dependency-groups]
+dev = [
+    "testcontainers[postgres]>=4.14.2",
+]

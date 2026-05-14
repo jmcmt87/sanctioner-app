@@ -1,5 +1,36 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-14 — Session 4: Architecture Audit + Fixes
+
+### Completed: Full architecture audit + fix all findings
+
+**Audit ran against:** `backend/app/`, `ingestion/pipeline/`, `backend/alembic/`, `backend/tests/`, project root.
+**Verdict:** CONDITIONAL PASS — scaffolding well-organized, two critical blockers found and fixed.
+
+**Critical fixes (blocked task 1.1.2):**
+- Created `backend/docker-compose.yml` — PostgreSQL 16 + pgvector, matching `SSA_DATABASE_URL` from `.env.example`
+- Initialized Alembic — `alembic.ini`, `alembic/env.py` (async SQLAlchemy, reads `SSA_DATABASE_URL` via `app.config.settings`), `alembic/script.py.mako`
+
+**CLAUDE.md consistency fixes (both project + parent copies):**
+- LLM env var prefix: `LLM_BASE_URL` → `SSA_LLM_BASE_URL` (and `MODEL_NAME`, `API_KEY`)
+- Ruff `target-version`: `py312` → `py313` to match actual config
+- Added `exceptions.py` to file tree (referenced in coding standards but missing from tree)
+- Added `pipeline/models.py` to file tree (defined in ingestion-pipeline-patterns skill)
+
+**Dependency and config fixes:**
+- Added `testcontainers[postgres]` to backend dev dependencies
+- Added `beautifulsoup4` to ingestion dependencies
+- Added `pytest-cov` to ingestion dev dependencies
+- Added `testpaths = ["tests"]` to ingestion pytest config
+- Removed empty `[tool.uv]` section from `ingestion/pyproject.toml`
+- Created `ingestion/tests/` directory
+
+**Other:**
+- Created `README.md` at repo root with quick-start instructions
+- Full audit report saved to `.tmp/audit_report_2026-05-14.md`
+
+**Task 1.1.1 is now COMPLETE.** All acceptance criteria met: directory structure, uv projects, docker-compose, Alembic config.
+
 ## 2026-05-14 — Session 3: Auditor Improvements + Builder Skills
 
 ### Completed: Phase 1 deliverables — agent/skill overhaul
@@ -67,9 +98,9 @@ New builder skills added:
 - Configured pytest with `asyncio_mode = "auto"` in both packages
 - Initial commit: `df99c16`
 
-**What remains for 1.1.1:**
-- `docker-compose.yml` with PostgreSQL 16 + pgvector
-- Alembic initialization (`alembic init` + config)
+**What remained for 1.1.1 (completed in Session 4):**
+- ~~`docker-compose.yml` with PostgreSQL 16 + pgvector~~
+- ~~Alembic initialization (`alembic init` + config)~~
 
 ### Notes
 - Development machine is Intel Mac (x86_64) running macOS 26 / Python 3.13.5
