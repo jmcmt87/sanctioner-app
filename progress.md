@@ -1,5 +1,24 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-14 — Session 3: Auditor Improvements + Builder Skills
+
+### Completed: Phase 1 deliverables — agent/skill overhaul
+
+**What was done:**
+
+Improvements to existing files:
+- **`.claude/agents/architecture-auditor.md`** — Replaced hardcoded absolute paths with relative paths, added PHASE-AWARE AUDITING section (only audit what exists, don't flag planned-but-unbuilt components), replaced Critical/Warnings/Suggestions with phase-aware severity tiers (Fix Before Next Phase / Fix Within Current or Next Phase / Backlog), added "What's Good" section to reinforce good patterns, added 6 code-level review checks (type hints, async consistency, error handling, duplication, naming, raw SQL)
+- **`.claude/skills/software-architect-review/SKILL.md`** — Removed B.L.A.S.T. reference, expanded bias rule 2 to distinguish dictionary-based registration patterns (acceptable from the start) from class hierarchies (wait for 2+ implementations)
+- **`.claude/skills/software-architect-review/references/review-framework.md`** — Added General License / EU derogation red flag to Domain-Specific Red Flags, added REJECTED verdict guidance with escalation instructions (Deniz for architecture, Marc for scope)
+- **`.claude/skills/software-architect-review/references/extensibility-patterns.md`** — Replaced class-based `OFACSdnParser` example with function-based `ingest_ofac_sdn` pattern matching CLAUDE.md conventions, added note on when to introduce protocol/base class (6+ sources)
+
+New builder skills added:
+- **`ingestion-pipeline-patterns`** — Six-step ingestion pattern (download → parse → validate → map → upsert → log), IngestionResult model, error handling rules, file structure convention, runner registry pattern
+- **`sqlalchemy-alembic-patterns`** — Model conventions (column patterns, relationships, unique constraints, naming), index setup (HNSW, GIN, trigram), async session factory, dependency injection, repository pattern, Alembic migration conventions
+- **`data-acquisition-patterns`** — Three acquisition categories (direct download, index crawl, HTML extraction), standard function signature, httpx client rules, rate limiting, retry logic, S3 organization, hash-based change detection, manifest tracking
+
+**7 files changed (4 modified, 3 created).**
+
 ## 2026-05-14 — Session 2: Claude Code Tooling Setup
 
 ### Completed: Adapt agent and skills from lingual-app to sanctioner-app

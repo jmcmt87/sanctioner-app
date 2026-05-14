@@ -130,6 +130,8 @@ Run through this for every plan review. Each "YES" is a flag to raise.
 - [ ] Vessel lookup that doesn't use IMO number as primary identifier
 - [ ] 50% Rule chain traversal that doesn't check transitive ownership
 - [ ] Retrieval results that don't include jurisdiction metadata
+- [ ] Blocked activity identified without referencing applicable General Licenses (OFAC)
+      or EU derogation mechanisms (Article 5b(3)/(4) exemptions)
 
 ### Complexity Red Flags
 - [ ] A new external service introduced before measuring a bottleneck
@@ -147,3 +149,8 @@ Run through this for every plan review. Each "YES" is a flag to raise.
 | 1-2 warnings, no critical issues        | APPROVED WITH NOTES  |
 | 1+ critical issues (fixable)            | NEEDS REVISION       |
 | Fundamental design flaw / wrong approach | REJECTED             |
+
+**On REJECTED verdicts:** A rejected plan means the fundamental approach is wrong —
+not that there are many small issues. The next step is to re-discuss the approach with
+the team (Deniz for technical architecture, Marc for scope/prioritization) before
+producing a new plan. Do not iterate on a rejected plan — rethink it.

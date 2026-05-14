@@ -74,21 +74,30 @@ elif source == 'eu_consolidated':
 The pipeline runner discovers and invokes them:
 
 ```python
-# GOOD — each source is a self-contained module
+# GOOD — each source is a self-contained module with a standard entry point
 # ingestion/pipeline/sources/ofac_sdn.py
-class OFACSdnParser:
-    source_name = "ofac_sdn"
-    def parse(self, raw_data) -> list[ParsedEntity]: ...
+async def ingest_ofac_sdn(session, s3_client, config) -> IngestionResult:
+    ...
 
-# ingestion/pipeline/runner.py
+# ingestion/pipeline/runner.py — registry maps source names to functions
 REGISTERED_SOURCES = {
-    "ofac_sdn": OFACSdnParser,
-    "eu_consolidated": EUSanctionsParser,
-    # Future: just add a new entry
+    "ofac_sdn": ingest_ofac_sdn,
+    "eu_consolidated": ingest_eu_sanctions,
+    # Future: just add a new entry + a new file in sources/
 }
+
+async def run_ingestion(sources: list[str] | None = None):
+    targets = sources or REGISTERED_SOURCES.keys()
+    for source_name in targets:
+        handler = REGISTERED_SOURCES[source_name]
+        result = await handler(session, s3_client, config)
+        log_ingestion_result(result)
 ```
 
 Adding a new sanctions list = creating a new file in `sources/` and registering it.
+
+**Note:** When the project has 6+ sources and parsers need shared setup/teardown
+logic, refactor to a protocol or base class. Not before.
 
 ---
 

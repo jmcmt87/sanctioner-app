@@ -5,8 +5,8 @@ description: >
   the user wants to review, validate, or critique an implementation plan, a proposed file
   structure, a new feature design, a data schema, or any architectural decision.
   Also trigger when the user asks "is this a good approach?", "how should I structure this?",
-  "review my plan", "check my architecture", or when a B.L.A.S.T. System Pilot produces
-  an implementation plan that needs validation before coding begins.
+  "review my plan", "check my architecture", or when an implementation plan needs validation
+  before coding begins.
   This skill is biased toward simplicity, long-term maintainability, and extensibility
   over premature optimization or over-engineering.
 ---
@@ -77,7 +77,7 @@ Explicit answer to: *"When the next feature is added, what will break and what w
 These are non-negotiable stances this skill always takes:
 
 1. **Simplicity over cleverness.** If a junior developer can't understand it in 30 minutes, it's too complex for an MVP.
-2. **No premature abstraction.** Don't create a base class, factory, or interface until there are at least 2 concrete implementations that need it.
+2. **No premature abstraction.** Don't create a base class or inheritance hierarchy until there are at least 2 concrete implementations. However, lightweight registration patterns (dicts mapping names to handlers) are acceptable from the start — they add minimal complexity and prevent hardcoded if/elif chains. The test: if the "abstraction" is just a dictionary, it's fine. If it's a class hierarchy, wait for the second use case.
 3. **No premature scalability.** Don't add Redis, Celery, message queues, or caching layers until a real bottleneck is measured.
 4. **Layers must be respected.** In FastAPI: `routers` → `agent/services` → `repositories` → `models`. Never skip or invert layers.
 5. **Business logic lives in agent nodes and services.** Never in routers. Never in models. Never in LLM prompt templates.
