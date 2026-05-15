@@ -5,18 +5,10 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pipeline.db_models import (
-    EntityAddress,
-    EntityAlias,
-    EntityIdentifier,
-    IngestionLog,
-    SanctionedEntity,
-    Vessel,
-)
+from pipeline.db_models import IngestionLog
+from pipeline.exceptions import RecordParseError
 from pipeline.models import IngestionResult
 from pipeline.sources.ofac_sdn import (
     ADD_COLUMNS,
@@ -26,6 +18,7 @@ from pipeline.sources.ofac_sdn import (
     _build_entity_dict,
     _parse_csv,
 )
+from pipeline.upsert import upsert_entities
 
 logger = structlog.get_logger()
 
@@ -110,141 +103,15 @@ async def ingest_ofac_nonsdn(
                     now=now,
                 )
                 parsed_entities.append(entity_dict)
-            except Exception:
+            except RecordParseError:
                 records_skipped += 1
                 log.warning("record_parse_failed", source_id=ent_num, exc_info=True)
 
         log.info("records_parsed", total=len(parsed_entities), skipped=records_skipped)
 
-        existing_ids: set[str] = set()
-        result = await session.execute(
-            select(SanctionedEntity.source_id).where(SanctionedEntity.source == SOURCE_NAME)
+        records_added, records_updated, records_removed = await upsert_entities(
+            session, SOURCE_NAME, parsed_entities
         )
-        existing_ids = {row[0] for row in result}
-
-        incoming_ids: set[str] = set()
-
-        batch_size = 500
-        for batch_start in range(0, len(parsed_entities), batch_size):
-            batch = parsed_entities[batch_start : batch_start + batch_size]
-
-            for entity_dict in batch:
-                source_id = entity_dict["source_id"]
-                incoming_ids.add(source_id)
-                is_update = source_id in existing_ids
-
-                stmt = insert(SanctionedEntity).values(
-                    source=SOURCE_NAME,
-                    source_id=source_id,
-                    entity_type=entity_dict["entity_type"],
-                    primary_name=entity_dict["primary_name"],
-                    programs=entity_dict["programs"],
-                    date_of_birth=entity_dict["date_of_birth"],
-                    nationality=entity_dict["nationality"],
-                    remarks=entity_dict["remarks"],
-                    data_vintage=entity_dict["data_vintage"],
-                    last_updated=entity_dict["last_updated"],
-                    raw_record=entity_dict["raw_record"],
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["source", "source_id"],
-                    set_={
-                        "entity_type": stmt.excluded.entity_type,
-                        "primary_name": stmt.excluded.primary_name,
-                        "programs": stmt.excluded.programs,
-                        "date_of_birth": stmt.excluded.date_of_birth,
-                        "nationality": stmt.excluded.nationality,
-                        "remarks": stmt.excluded.remarks,
-                        "data_vintage": stmt.excluded.data_vintage,
-                        "last_updated": stmt.excluded.last_updated,
-                        "raw_record": stmt.excluded.raw_record,
-                    },
-                )
-                await session.execute(stmt)
-
-                if is_update:
-                    records_updated += 1
-                else:
-                    records_added += 1
-
-                ent_result = await session.execute(
-                    select(SanctionedEntity.id).where(
-                        SanctionedEntity.source == SOURCE_NAME,
-                        SanctionedEntity.source_id == source_id,
-                    )
-                )
-                entity_id = ent_result.scalar_one()
-
-                await session.execute(delete(EntityAlias).where(EntityAlias.entity_id == entity_id))
-                await session.execute(
-                    delete(EntityAddress).where(EntityAddress.entity_id == entity_id)
-                )
-                await session.execute(
-                    delete(EntityIdentifier).where(EntityIdentifier.entity_id == entity_id)
-                )
-                await session.execute(delete(Vessel).where(Vessel.entity_id == entity_id))
-
-                for alias_row in entity_dict["parsed_aliases"]:
-                    alias_name = alias_row.get("alt_name")
-                    if alias_name:
-                        session.add(
-                            EntityAlias(
-                                entity_id=entity_id,
-                                alias_name=alias_name,
-                                alias_type=alias_row.get("alt_type"),
-                                is_primary=False,
-                            )
-                        )
-
-                for addr_row in entity_dict["parsed_addresses"]:
-                    if any(addr_row.get(f) for f in ("address", "city_state", "country")):
-                        session.add(
-                            EntityAddress(
-                                entity_id=entity_id,
-                                address=addr_row.get("address"),
-                                city=addr_row.get("city_state"),
-                                country=addr_row.get("country"),
-                            )
-                        )
-
-                for ident in entity_dict["identifiers"]:
-                    session.add(
-                        EntityIdentifier(
-                            entity_id=entity_id,
-                            id_type=ident["id_type"],
-                            id_value=ident["id_value"],
-                            country=ident.get("country"),
-                        )
-                    )
-
-                if entity_dict["vessel_data"]:
-                    vd = entity_dict["vessel_data"]
-                    session.add(
-                        Vessel(
-                            entity_id=entity_id,
-                            vessel_name=vd["vessel_name"],
-                            imo_number=vd["imo_number"],
-                            mmsi_number=vd["mmsi_number"],
-                            vessel_type=vd["vessel_type"],
-                            flag=vd["flag"],
-                            tonnage=vd["tonnage"],
-                            build_year=vd["build_year"],
-                            call_sign=vd["call_sign"],
-                        )
-                    )
-
-            await session.flush()
-
-        removed_ids = existing_ids - incoming_ids
-        records_removed = len(removed_ids)
-        if removed_ids:
-            await session.execute(
-                delete(SanctionedEntity).where(
-                    SanctionedEntity.source == SOURCE_NAME,
-                    SanctionedEntity.source_id.in_(removed_ids),
-                )
-            )
-            log.info("records_removed", count=records_removed)
 
         if records_skipped > 0:
             status = "completed_with_errors"

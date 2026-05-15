@@ -8,19 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pipeline.db_models import (
-    EntityAddress,
-    EntityAlias,
-    EntityIdentifier,
-    IngestionLog,
-    SanctionedEntity,
-    Vessel,
-)
+from pipeline.db_models import IngestionLog
+from pipeline.exceptions import RecordParseError
 from pipeline.models import IngestionResult
+from pipeline.upsert import upsert_entities
 
 logger = structlog.get_logger()
 
@@ -225,18 +218,41 @@ def _build_entity_dict(
     mmsi_match = MMSI_RE.search(remarks) if remarks else None
     build_year_match = BUILD_YEAR_RE.search(remarks) if remarks else None
 
-    vessel_data: dict[str, Any] | None = None
+    vessels: list[dict[str, Any]] = []
     if entity_type == "vessel":
-        vessel_data = {
-            "vessel_name": sdn_row.get("sdn_name"),
-            "imo_number": imo_match.group(1) if imo_match else None,
-            "mmsi_number": mmsi_match.group(1) if mmsi_match else None,
-            "vessel_type": sdn_row.get("vess_type"),
-            "flag": sdn_row.get("vess_flag"),
-            "tonnage": sdn_row.get("tonnage"),
-            "build_year": int(build_year_match.group(1)) if build_year_match else None,
-            "call_sign": sdn_row.get("call_sign"),
+        vessels.append(
+            {
+                "vessel_name": sdn_row.get("sdn_name"),
+                "imo_number": imo_match.group(1) if imo_match else None,
+                "mmsi_number": mmsi_match.group(1) if mmsi_match else None,
+                "vessel_type": sdn_row.get("vess_type"),
+                "flag": sdn_row.get("vess_flag"),
+                "tonnage": sdn_row.get("tonnage"),
+                "build_year": int(build_year_match.group(1)) if build_year_match else None,
+                "call_sign": sdn_row.get("call_sign"),
+            }
+        )
+
+    normalized_aliases = [
+        {
+            "alias_name": row.get("alt_name"),
+            "alias_type": row.get("alt_type"),
+            "is_primary": False,
         }
+        for row in aliases
+        if row.get("alt_name")
+    ]
+
+    normalized_addresses = [
+        {
+            "address": row.get("address"),
+            "city": row.get("city_state"),
+            "country": row.get("country"),
+            "postal_code": None,
+        }
+        for row in addresses
+        if any(row.get(f) for f in ("address", "city_state", "country"))
+    ]
 
     raw_record: dict[str, Any] = {
         "sdn_row": {k: v for k, v in sdn_row.items()},
@@ -257,10 +273,10 @@ def _build_entity_dict(
         "data_vintage": now,
         "last_updated": now,
         "raw_record": raw_record,
-        "vessel_data": vessel_data,
+        "aliases": normalized_aliases,
+        "addresses": normalized_addresses,
         "identifiers": identifiers,
-        "parsed_addresses": addresses,
-        "parsed_aliases": aliases,
+        "vessels": vessels,
     }
 
 
@@ -278,6 +294,7 @@ async def ingest_ofac_sdn(
 
     records_added = 0
     records_updated = 0
+    records_removed = 0
     records_skipped = 0
     error_message: str | None = None
     status = "completed"
@@ -345,149 +362,15 @@ async def ingest_ofac_sdn(
                     now=now,
                 )
                 parsed_entities.append(entity_dict)
-            except Exception:
+            except RecordParseError:
                 records_skipped += 1
                 log.warning("record_parse_failed", source_id=ent_num, exc_info=True)
 
         log.info("records_parsed", total=len(parsed_entities), skipped=records_skipped)
 
-        # Upsert entities in batches
-        existing_ids: set[str] = set()
-        result = await session.execute(
-            select(SanctionedEntity.source_id).where(SanctionedEntity.source == SOURCE_NAME)
+        records_added, records_updated, records_removed = await upsert_entities(
+            session, SOURCE_NAME, parsed_entities
         )
-        existing_ids = {row[0] for row in result}
-
-        incoming_ids: set[str] = set()
-
-        batch_size = 500
-        for batch_start in range(0, len(parsed_entities), batch_size):
-            batch = parsed_entities[batch_start : batch_start + batch_size]
-
-            for entity_dict in batch:
-                source_id = entity_dict["source_id"]
-                incoming_ids.add(source_id)
-                is_update = source_id in existing_ids
-
-                stmt = insert(SanctionedEntity).values(
-                    source=SOURCE_NAME,
-                    source_id=source_id,
-                    entity_type=entity_dict["entity_type"],
-                    primary_name=entity_dict["primary_name"],
-                    programs=entity_dict["programs"],
-                    date_of_birth=entity_dict["date_of_birth"],
-                    nationality=entity_dict["nationality"],
-                    remarks=entity_dict["remarks"],
-                    data_vintage=entity_dict["data_vintage"],
-                    last_updated=entity_dict["last_updated"],
-                    raw_record=entity_dict["raw_record"],
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["source", "source_id"],
-                    set_={
-                        "entity_type": stmt.excluded.entity_type,
-                        "primary_name": stmt.excluded.primary_name,
-                        "programs": stmt.excluded.programs,
-                        "date_of_birth": stmt.excluded.date_of_birth,
-                        "nationality": stmt.excluded.nationality,
-                        "remarks": stmt.excluded.remarks,
-                        "data_vintage": stmt.excluded.data_vintage,
-                        "last_updated": stmt.excluded.last_updated,
-                        "raw_record": stmt.excluded.raw_record,
-                    },
-                )
-                result = await session.execute(stmt)
-
-                if is_update:
-                    records_updated += 1
-                else:
-                    records_added += 1
-
-                # Get the entity id for child inserts
-                ent_result = await session.execute(
-                    select(SanctionedEntity.id).where(
-                        SanctionedEntity.source == SOURCE_NAME,
-                        SanctionedEntity.source_id == source_id,
-                    )
-                )
-                entity_id = ent_result.scalar_one()
-
-                # Delete existing children and re-insert
-                await session.execute(delete(EntityAlias).where(EntityAlias.entity_id == entity_id))
-                await session.execute(
-                    delete(EntityAddress).where(EntityAddress.entity_id == entity_id)
-                )
-                await session.execute(
-                    delete(EntityIdentifier).where(EntityIdentifier.entity_id == entity_id)
-                )
-                await session.execute(delete(Vessel).where(Vessel.entity_id == entity_id))
-
-                # Insert aliases
-                for alias_row in entity_dict["parsed_aliases"]:
-                    alias_name = alias_row.get("alt_name")
-                    if alias_name:
-                        session.add(
-                            EntityAlias(
-                                entity_id=entity_id,
-                                alias_name=alias_name,
-                                alias_type=alias_row.get("alt_type"),
-                                is_primary=False,
-                            )
-                        )
-
-                # Insert addresses
-                for addr_row in entity_dict["parsed_addresses"]:
-                    if any(addr_row.get(f) for f in ("address", "city_state", "country")):
-                        session.add(
-                            EntityAddress(
-                                entity_id=entity_id,
-                                address=addr_row.get("address"),
-                                city=addr_row.get("city_state"),
-                                country=addr_row.get("country"),
-                            )
-                        )
-
-                # Insert identifiers
-                for ident in entity_dict["identifiers"]:
-                    session.add(
-                        EntityIdentifier(
-                            entity_id=entity_id,
-                            id_type=ident["id_type"],
-                            id_value=ident["id_value"],
-                            country=ident.get("country"),
-                        )
-                    )
-
-                # Insert vessel data
-                if entity_dict["vessel_data"]:
-                    vd = entity_dict["vessel_data"]
-                    session.add(
-                        Vessel(
-                            entity_id=entity_id,
-                            vessel_name=vd["vessel_name"],
-                            imo_number=vd["imo_number"],
-                            mmsi_number=vd["mmsi_number"],
-                            vessel_type=vd["vessel_type"],
-                            flag=vd["flag"],
-                            tonnage=vd["tonnage"],
-                            build_year=vd["build_year"],
-                            call_sign=vd["call_sign"],
-                        )
-                    )
-
-            await session.flush()
-
-        # Detect removed entities
-        removed_ids = existing_ids - incoming_ids
-        records_removed = len(removed_ids)
-        if removed_ids:
-            await session.execute(
-                delete(SanctionedEntity).where(
-                    SanctionedEntity.source == SOURCE_NAME,
-                    SanctionedEntity.source_id.in_(removed_ids),
-                )
-            )
-            log.info("records_removed", count=records_removed)
 
         if records_skipped > 0:
             status = "completed_with_errors"

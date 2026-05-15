@@ -1,5 +1,59 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-15 — Session 7: Architecture Audit + Codebase Fixes
+
+### Completed: Full architecture audit + fix all 9 audit findings
+
+**Architecture Audit (B+ grade, Conditional Pass)**
+- Ran architecture-auditor agent against `backend/app/`, `ingestion/pipeline/`, `backend/alembic/`, `backend/tests/`
+- Checked all 12 areas: schema design, agent pipeline, retrieval, LLM abstraction, data vintage, citations, config, ingestion, testing, migrations, dependencies, code quality
+- Full report saved to `.tmp/audit_report_2026-05-15.md`
+
+**C1 — Eliminated duplicated SQLAlchemy models**
+- `ingestion/pipeline/db_models.py` now re-exports from `app.db.models` (single source of truth)
+- Added `sanctions-screening-backend` as a path dependency in ingestion's `pyproject.toml`
+- The two copies had already diverged (ingestion was missing relationship back_populates)
+
+**C2 — Extracted shared upsert logic (~400 lines of duplication removed)**
+- Created `ingestion/pipeline/upsert.py` — shared `upsert_entities()` function
+- `ofac_sdn.py` lost ~130 lines, `ofac_nonsdn.py` lost ~130 lines, `eu_sanctions.py` lost ~120 lines
+- Standardized child record format (`aliases`, `addresses`, `identifiers`, `vessels`) across all parsers
+- Future parsers just parse → produce standard dicts → call `upsert_entities()`
+
+**I1 — Fixed S3Client.has_changed() async/sync mismatch**
+- Changed from `async def` to `def` since it only calls sync boto3 methods
+
+**I2 — Replaced bare except Exception in parsers**
+- Created `ingestion/pipeline/exceptions.py` with `RecordParseError`
+- OFAC parsers now catch `RecordParseError` instead of swallowing all exceptions
+
+**I4 — Consolidated backend dev dependencies**
+- Merged split `[project.optional-dependencies].dev` and `[dependency-groups].dev` into single `[dependency-groups].dev`
+
+**I5 — Added missing noqa comment**
+- `eu_sanctions.py` line 51: `# noqa: S320 -- trusted local file from known EU source`
+
+**M1 — Excluded alembic/versions from ruff**
+- Added `extend-exclude = ["alembic/versions"]` to backend ruff config
+
+**M4 — Fixed conftest return type**
+- Updated fixture annotation to `AsyncGenerator[AsyncClient]`
+
+**M5 — Resolved duplicate compute_file_hash**
+- Added `compute_content_hash(bytes)` to `hashing.py`
+- `loaders.py` now imports from `hashing` instead of defining its own
+
+**All 114 tests pass (112 ingestion + 2 backend). Ruff clean on both packages.**
+**Net: -240 lines of duplicated code, +170 lines of shared infrastructure.**
+
+### Blockers / Notes
+- No blockers
+- `uv sync --reinstall` needed after adding the path dependency (`.pth` file not picked up until reinstall)
+- The path dep pulls backend's heavy deps (fastapi, langgraph, etc.) into ingestion's venv — acceptable for dev, could extract a shared models package later if container size matters
+
+### Next step
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+
 ## 2026-05-15 — Session 6: Test Suite for Existing Code
 
 ### Completed: Unit tests for backend + ingestion (112 tests, all passing)
@@ -91,7 +145,7 @@
 **Infrastructure created:**
 - `ingestion/pipeline/config.py` — IngestionConfig (pydantic-settings)
 - `ingestion/pipeline/db.py` — async session factory for ingestion
-- `ingestion/pipeline/db_models.py` — SQLAlchemy models (shared with backend)
+- `ingestion/pipeline/db_models.py` — re-exports from `app.db.models` (consolidated in Session 7)
 - `ingestion/pipeline/models.py` — IngestionResult and AcquisitionResult Pydantic models
 - `ingestion/pipeline/runner.py` — orchestrator with `REGISTERED_SOURCES` registry
 - `ingestion/scripts/ingest_all.py`, `ingest_incremental.py`, `ingest_ofac_sdn.py`, `ingest_ofac_nonsdn.py`, `ingest_eu_sanctions.py`

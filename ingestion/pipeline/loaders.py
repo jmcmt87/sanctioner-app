@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,15 +8,12 @@ import httpx
 import structlog
 
 from pipeline.config import IngestionConfig
+from pipeline.hashing import compute_content_hash
 from pipeline.models import AcquisitionResult
 
 logger = structlog.get_logger()
 
 USER_AGENT = "SanctionsScreeningAssistant/1.0 (compliance-research-tool)"
-
-
-def compute_file_hash(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
 
 
 async def download_file(
@@ -116,7 +112,7 @@ class S3Client:
         keys = self.list_keys(prefix)
         return sorted(keys)[-1] if keys else None
 
-    async def has_changed(self, prefix: str, new_hash: str) -> bool:
+    def has_changed(self, prefix: str, new_hash: str) -> bool:
         """Check if the file has changed since the last upload by comparing SHA-256 hashes."""
         latest = self.get_latest_key(prefix)
         if not latest:
@@ -139,14 +135,14 @@ async def acquire_direct_download(
     dest = local_dir / filename
 
     content = await download_file(url, dest)
-    file_hash = compute_file_hash(content)
+    file_hash = compute_content_hash(content)
 
     changed = True
     s3_dest_key: str | None = None
 
     if s3_client:
         prefix = f"raw/{category}/{source_name}/"
-        changed = await s3_client.has_changed(prefix, file_hash)
+        changed = s3_client.has_changed(prefix, file_hash)
         if changed:
             s3_dest_key = s3_key(category, source_name, filename, fetch_timestamp)
             s3_client.upload_bytes(s3_dest_key, content, metadata={"sha256": file_hash})

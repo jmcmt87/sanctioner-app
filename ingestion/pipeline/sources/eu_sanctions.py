@@ -14,18 +14,11 @@ from typing import Any
 
 import structlog
 from lxml import etree
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pipeline.db_models import (
-    EntityAddress,
-    EntityAlias,
-    EntityIdentifier,
-    IngestionLog,
-    SanctionedEntity,
-)
+from pipeline.db_models import IngestionLog
 from pipeline.models import IngestionResult
+from pipeline.upsert import upsert_entities
 
 logger = structlog.get_logger()
 
@@ -48,7 +41,7 @@ def _parse_xml(xml_path: Path) -> tuple[list[etree._Element], datetime | None]:
     Returns:
         Tuple of (list of sanctionEntity elements, generation date from root).
     """
-    tree = etree.parse(xml_path)  # noqa: S320
+    tree = etree.parse(xml_path)  # noqa: S320 -- trusted local file from known EU source
     root = tree.getroot()
 
     # Extract generation date from root element
@@ -460,6 +453,16 @@ def _build_entity_dict(
 
     raw_record = _build_raw_record(entity_el, all_alias_info)
 
+    normalized_aliases = [
+        {
+            "alias_name": a["whole_name"],
+            "alias_type": f"aka ({a['language']})" if a.get("language") else "aka",
+            "is_primary": False,
+        }
+        for a in other_aliases
+        if a.get("whole_name")
+    ]
+
     return {
         "source_id": eu_ref,
         "entity_type": entity_type,
@@ -473,9 +476,10 @@ def _build_entity_dict(
         "data_vintage": now,
         "last_updated": now,
         "raw_record": raw_record,
-        "parsed_addresses": addresses,
-        "parsed_aliases": other_aliases,
+        "aliases": normalized_aliases,
+        "addresses": addresses,
         "identifiers": identifiers,
+        "vessels": [],
     }
 
 
@@ -524,131 +528,9 @@ async def ingest_eu_sanctions(
 
         log.info("records_parsed", total=len(parsed_entities), skipped=records_skipped)
 
-        # Step 5: Upsert entities
-        # Get existing entity source_ids for this source
-        result = await session.execute(
-            select(SanctionedEntity.source_id).where(SanctionedEntity.source == SOURCE_NAME)
+        records_added, records_updated, records_removed = await upsert_entities(
+            session, SOURCE_NAME, parsed_entities
         )
-        existing_ids: set[str] = {row[0] for row in result}
-        incoming_ids: set[str] = set()
-
-        batch_size = 500
-        for batch_start in range(0, len(parsed_entities), batch_size):
-            batch = parsed_entities[batch_start : batch_start + batch_size]
-
-            for entity_dict in batch:
-                source_id = entity_dict["source_id"]
-                incoming_ids.add(source_id)
-                is_update = source_id in existing_ids
-
-                stmt = insert(SanctionedEntity).values(
-                    source=SOURCE_NAME,
-                    source_id=source_id,
-                    entity_type=entity_dict["entity_type"],
-                    primary_name=entity_dict["primary_name"],
-                    programs=entity_dict["programs"],
-                    legal_basis=entity_dict["legal_basis"],
-                    date_of_birth=entity_dict["date_of_birth"],
-                    nationality=entity_dict["nationality"],
-                    remarks=entity_dict["remarks"],
-                    list_date=entity_dict["list_date"],
-                    data_vintage=entity_dict["data_vintage"],
-                    last_updated=entity_dict["last_updated"],
-                    raw_record=entity_dict["raw_record"],
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["source", "source_id"],
-                    set_={
-                        "entity_type": stmt.excluded.entity_type,
-                        "primary_name": stmt.excluded.primary_name,
-                        "programs": stmt.excluded.programs,
-                        "legal_basis": stmt.excluded.legal_basis,
-                        "date_of_birth": stmt.excluded.date_of_birth,
-                        "nationality": stmt.excluded.nationality,
-                        "remarks": stmt.excluded.remarks,
-                        "list_date": stmt.excluded.list_date,
-                        "data_vintage": stmt.excluded.data_vintage,
-                        "last_updated": stmt.excluded.last_updated,
-                        "raw_record": stmt.excluded.raw_record,
-                    },
-                )
-                await session.execute(stmt)
-
-                if is_update:
-                    records_updated += 1
-                else:
-                    records_added += 1
-
-                # Get entity id for child record inserts
-                ent_result = await session.execute(
-                    select(SanctionedEntity.id).where(
-                        SanctionedEntity.source == SOURCE_NAME,
-                        SanctionedEntity.source_id == source_id,
-                    )
-                )
-                entity_id = ent_result.scalar_one()
-
-                # Delete existing children and re-insert
-                await session.execute(delete(EntityAlias).where(EntityAlias.entity_id == entity_id))
-                await session.execute(
-                    delete(EntityAddress).where(EntityAddress.entity_id == entity_id)
-                )
-                await session.execute(
-                    delete(EntityIdentifier).where(EntityIdentifier.entity_id == entity_id)
-                )
-
-                # Insert aliases (non-primary names)
-                for alias_info in entity_dict["parsed_aliases"]:
-                    alias_name = alias_info.get("whole_name")
-                    if alias_name:
-                        # Determine alias type from language
-                        language = alias_info.get("language", "")
-                        alias_type = f"aka ({language})" if language else "aka"
-                        session.add(
-                            EntityAlias(
-                                entity_id=entity_id,
-                                alias_name=alias_name,
-                                alias_type=alias_type,
-                                is_primary=False,
-                            )
-                        )
-
-                # Insert addresses
-                for addr in entity_dict["parsed_addresses"]:
-                    session.add(
-                        EntityAddress(
-                            entity_id=entity_id,
-                            address=addr.get("address"),
-                            city=addr.get("city"),
-                            country=addr.get("country"),
-                            postal_code=addr.get("postal_code"),
-                        )
-                    )
-
-                # Insert identifiers
-                for ident in entity_dict["identifiers"]:
-                    session.add(
-                        EntityIdentifier(
-                            entity_id=entity_id,
-                            id_type=ident["id_type"],
-                            id_value=ident["id_value"],
-                            country=ident.get("country"),
-                        )
-                    )
-
-            await session.flush()
-
-        # Detect removed entities
-        removed_ids = existing_ids - incoming_ids
-        records_removed = len(removed_ids)
-        if removed_ids:
-            await session.execute(
-                delete(SanctionedEntity).where(
-                    SanctionedEntity.source == SOURCE_NAME,
-                    SanctionedEntity.source_id.in_(removed_ids),
-                )
-            )
-            log.info("records_removed", count=records_removed)
 
         if records_skipped > 0:
             status = "completed_with_errors"

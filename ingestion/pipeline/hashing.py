@@ -16,8 +16,13 @@ def compute_record_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
+def compute_content_hash(content: bytes) -> str:
+    """SHA-256 hash of in-memory bytes."""
+    return hashlib.sha256(content).hexdigest()
+
+
 def compute_file_hash(path: Path) -> str:
-    """SHA-256 hash of a file."""
+    """SHA-256 hash of a file on disk (streamed, constant memory)."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):

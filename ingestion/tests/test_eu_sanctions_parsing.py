@@ -528,8 +528,8 @@ class TestBuildEntityDictEU:
         el.append(_el("address", addr))
 
         result = _build_entity_dict(el, now)
-        assert len(result["parsed_addresses"]) == 1
-        assert result["parsed_addresses"][0]["city"] == "Moscow"
+        assert len(result["addresses"]) == 1
+        assert result["addresses"][0]["city"] == "Moscow"
 
     def test_identifiers_extracted(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
@@ -540,6 +540,31 @@ class TestBuildEntityDictEU:
         result = _build_entity_dict(el, now)
         assert len(result["identifiers"]) == 1
         assert result["identifiers"][0]["id_type"] == "Passport"
+
+    def test_aliases_normalized(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        el = self._make_entity_el()
+        el.append(
+            _el(
+                "nameAlias",
+                {
+                    "wholeName": "Тест Персон",
+                    "nameLanguage": "RU",
+                    "strong": "false",
+                    "logicalId": "2",
+                },
+            )
+        )
+        result = _build_entity_dict(el, now)
+        assert len(result["aliases"]) == 1
+        assert result["aliases"][0]["alias_name"] == "Тест Персон"
+        assert result["aliases"][0]["alias_type"] == "aka (RU)"
+
+    def test_vessels_empty_for_persons(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        el = self._make_entity_el()
+        result = _build_entity_dict(el, now)
+        assert result["vessels"] == []
 
     def test_raw_record_preserved(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)

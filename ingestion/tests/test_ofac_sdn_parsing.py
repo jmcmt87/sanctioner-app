@@ -293,18 +293,19 @@ class TestBuildEntityDict:
         result = _build_entity_dict(row, [], [], None, now)
 
         assert result["entity_type"] == "vessel"
-        assert result["vessel_data"] is not None
-        assert result["vessel_data"]["imo_number"] == "9876543"
-        assert result["vessel_data"]["mmsi_number"] == "123456789"
-        assert result["vessel_data"]["build_year"] == 2005
-        assert result["vessel_data"]["vessel_type"] == "Crude Oil Tanker"
-        assert result["vessel_data"]["flag"] == "Panama"
-        assert result["vessel_data"]["call_sign"] == "ABCD"
+        assert len(result["vessels"]) == 1
+        vessel = result["vessels"][0]
+        assert vessel["imo_number"] == "9876543"
+        assert vessel["mmsi_number"] == "123456789"
+        assert vessel["build_year"] == 2005
+        assert vessel["vessel_type"] == "Crude Oil Tanker"
+        assert vessel["flag"] == "Panama"
+        assert vessel["call_sign"] == "ABCD"
 
     def test_no_vessel_data_for_non_vessel(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
         result = _build_entity_dict(self._make_sdn_row(), [], [], None, now)
-        assert result["vessel_data"] is None
+        assert result["vessels"] == []
 
     def test_extended_remarks_appended(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
@@ -313,9 +314,9 @@ class TestBuildEntityDict:
         assert "Extended comment" in result["remarks"]
         assert "Original remark" in result["remarks"]
 
-    def test_aliases_preserved_in_raw_record(self):
+    def test_aliases_normalized_and_raw_preserved(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
-        aliases = [
+        raw_aliases = [
             {
                 "ent_num": "12345",
                 "alt_num": "1",
@@ -324,13 +325,15 @@ class TestBuildEntityDict:
                 "alt_remarks": None,
             }
         ]
-        result = _build_entity_dict(self._make_sdn_row(), [], aliases, None, now)
-        assert result["raw_record"]["aliases"] == aliases
-        assert result["parsed_aliases"] == aliases
+        result = _build_entity_dict(self._make_sdn_row(), [], raw_aliases, None, now)
+        assert result["raw_record"]["aliases"] == raw_aliases
+        assert len(result["aliases"]) == 1
+        assert result["aliases"][0]["alias_name"] == "Alias One"
+        assert result["aliases"][0]["alias_type"] == "aka"
 
-    def test_addresses_preserved_in_raw_record(self):
+    def test_addresses_normalized_and_raw_preserved(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
-        addresses = [
+        raw_addresses = [
             {
                 "ent_num": "12345",
                 "add_num": "1",
@@ -340,9 +343,12 @@ class TestBuildEntityDict:
                 "add_remarks": None,
             }
         ]
-        result = _build_entity_dict(self._make_sdn_row(), addresses, [], None, now)
-        assert result["raw_record"]["addresses"] == addresses
-        assert result["parsed_addresses"] == addresses
+        result = _build_entity_dict(self._make_sdn_row(), raw_addresses, [], None, now)
+        assert result["raw_record"]["addresses"] == raw_addresses
+        assert len(result["addresses"]) == 1
+        assert result["addresses"][0]["address"] == "123 Main St"
+        assert result["addresses"][0]["city"] == "Moscow"
+        assert result["addresses"][0]["country"] == "Russia"
 
     def test_identifiers_parsed_from_remarks(self):
         now = datetime(2026, 5, 15, tzinfo=UTC)
