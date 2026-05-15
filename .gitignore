@@ -15,3 +15,4 @@ node_modules/
 .tmp/
 ingestion/data/
 .ingestion_hashes.json
+.claude/agent-memory/architecture-auditor/
