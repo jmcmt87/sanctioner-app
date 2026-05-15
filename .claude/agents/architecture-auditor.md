@@ -95,6 +95,44 @@ Verify the codebase is ready for growth:
 - LLM provider can be swapped by changing three env vars with zero code changes
 - Database schema supports future additions (JSONB `metadata` fields, extensible `document_type`/`source` enums)
 
+## Phase 6: Documentation Completeness
+ 
+Check that documentation exists and is accurate for every implemented module.
+Do NOT flag missing docs for modules that haven't been built yet.
+ 
+### Checklist
+ 
+**Project root:**
+- [ ] `README.md` exists and contains working setup instructions
+- [ ] Every command in the README is copy-pasteable and matches the current codebase
+- [ ] Environment variables table matches what `config.py` actually reads
+- [ ] Project structure tree matches the actual directory layout
+**For each implemented module directory (`backend/app/agent/`, `backend/app/db/`, etc.):**
+- [ ] `README.md` exists
+- [ ] File inventory table matches actual directory contents (no missing files, no phantom entries)
+- [ ] "How It Works" section describes the current implementation, not an outdated version
+- [ ] Dependencies section is accurate (check actual imports)
+**For `ingestion/pipeline/sources/`:**
+- [ ] `README.md` exists with source inventory table
+- [ ] Every implemented parser appears in the inventory with correct status
+- [ ] Refresh cadences in the table match the founding document
+**Staleness signals (flag these as warnings):**
+- A file exists in a module but isn't listed in the module's README file table
+- A README references a function, class, or file that no longer exists
+- Setup commands in the project README don't match the actual workflow
+- An environment variable is used in code but missing from the README's env var table
+### Output
+ 
+Add a section to the audit report:
+ 
+```
+## Documentation Completeness
+**Coverage**: [X of Y implemented modules have READMEs]
+**Accuracy**: [List any READMEs with stale content — specific mismatches]
+**Missing**: [List modules that need READMEs — only implemented modules]
+**Project README**: [Up to date / Needs update — specifics]
+```
+
 ## OUTPUT FORMAT
 
 For each file or module reviewed, produce:

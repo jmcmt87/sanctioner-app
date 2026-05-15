@@ -1,5 +1,33 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-15 — Session 8: Architecture Audit (Documentation Focus) + READMEs
+
+### Completed: Audit re-run + 6 READMEs following documentation-standard skill
+
+**Architecture Audit (B+ grade, Conditional Pass)**
+- Re-ran full architecture-auditor agent against all implemented code
+- Report saved to `.tmp/audit_report_2026-05-15.md` (overwrites earlier report)
+- No critical blockers; 5 important items (I1-I5) and 5 minor items (M1-M5)
+- Audit specifically focused on documentation gaps to guide README creation
+
+**Documentation — 6 READMEs created per documentation-standard skill**
+- `README.md` (root, 92 lines) — Project overview, architecture diagram, quick start, env vars table, project structure
+- `backend/README.md` (42 lines) — Backend overview, running commands, directory inventory, key decisions
+- `backend/app/db/README.md` (37 lines) — Models overview, session management, schema modification guide
+- `backend/tests/README.md` (39 lines) — Test organization, fixtures, how to run and add tests
+- `ingestion/README.md` (66 lines) — Pipeline architecture, data directory layout, running scripts, key decisions
+- `ingestion/pipeline/sources/README.md` (47 lines) — Source inventory table with status, adding a new source guide, parser details
+
+All READMEs are within skill line limits (project <150, modules <80). Directories with only `__init__.py` were skipped per skill rule.
+
+### Blockers / Notes
+- No blockers
+- Markdownlint warnings on `.tmp/audit_report_2026-05-15.md` (table column style) — cosmetic only, `.tmp/` is not committed
+
+### Next step
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+- Before starting 1.3, consider fixing I1 (extract shared ingestion orchestration wrapper) since the next parsers will benefit immediately
+
 ## 2026-05-15 — Session 7: Architecture Audit + Codebase Fixes
 
 ### Completed: Full architecture audit + fix all 9 audit findings
