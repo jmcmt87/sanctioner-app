@@ -151,15 +151,15 @@
 
 ### Phase 1 Checkpoint
 
-- [ ] PostgreSQL running with all entity tables (including relationships) and vector store tables
-- [ ] OFAC SDN + EU Consolidated List loaded with DOB, nationality, legal basis, relationships
-- [ ] Vessel records extracted and queryable by IMO number, with vessel_name and build_year
-- [ ] Entity relationships populated where extractable from source data
+- [x] PostgreSQL running with all entity tables (including relationships) and vector store tables
+- [x] OFAC SDN + EU Consolidated List loaded with DOB, nationality, legal basis, relationships
+- [x] Vessel records extracted and queryable by IMO number, with vessel_name and build_year
+- [x] Entity relationships populated where extractable from source data
 - [ ] 20–30 enforcement PDFs chunked, embedded, and searchable
 - [ ] OFAC Compliance Framework + 50% Rule in vector store
-- [ ] Incremental update logic working for sanctions lists
-- [ ] S3 bucket organized with raw source files
-- [ ] Ingestion log tracking all runs
+- [x] Incremental update logic working for sanctions lists
+- [x] S3 bucket organized with raw source files
+- [x] Ingestion log tracking all runs
 
 ---
 

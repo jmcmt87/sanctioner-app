@@ -1,5 +1,67 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-15 — Session 5: Phase 1 Foundation + Structured Data Ingestion
+
+### Completed: Tasks 1.1.2–1.1.4 and 1.2.1–1.2.5
+
+**Task 1.1.4 — Configuration management**
+- Created `backend/app/config.py` — pydantic-settings `Settings` class with all `SSA_`-prefixed env vars (DB, LLM, S3, embedding, observability)
+- Created `backend/app/logging.py` — structlog setup with JSON rendering, timestamping, log level from config
+- Created `backend/app/exceptions.py` — domain-specific exception hierarchy
+- Created `backend/app/main.py` — FastAPI app entry point with health endpoint
+
+**Task 1.1.2 — Database schema: structured entity tables**
+- Created `backend/app/db/models.py` — 8 SQLAlchemy models: `SanctionedEntity`, `EntityAlias`, `Vessel`, `EntityAddress`, `EntityIdentifier`, `EntityRelationship`, `DocumentChunk`, `IngestionLog`
+- All models follow skill patterns: UUID PKs with `server_default`, `TIMESTAMP(timezone=True)`, `ARRAY(Text)`, proper `relationship()` with `back_populates`
+- Created `backend/app/db/session.py` — async session factory
+- Alembic migration for extensions (pgvector + pg_trgm) + all tables
+- Manual indexes: HNSW on embeddings, GIN on tsvector (generated column), trigram on `primary_name` and `alias_name`
+- Full migration roundtrip verified (downgrade base → upgrade head)
+
+**Task 1.1.3 — Database schema: vector store tables**
+- `document_chunks` table with `vector(1024)` column, generated `tsvector` column, HNSW + GIN indexes
+- Completed as part of the same migration as 1.1.2
+
+**Task 1.2.1 — OFAC SDN list ingestion**
+- Created `ingestion/pipeline/sources/ofac_sdn.py` — full parser following six-step ingestion pattern
+- Parses 4 CSV files: `sdn.csv` (18,960 rows), `add.csv` (24,737), `alt.csv` (20,297), `sdn_comments.csv` (32)
+- Extracts: DOB from remarks, nationality, identifiers (passport, tax ID, etc.), vessel IMO/MMSI/build_year
+- Entity type normalization: `-0-` → `entity`, plus `individual`, `vessel`, `aircraft`
+- Upsert via `INSERT ... ON CONFLICT DO UPDATE`, children deleted and re-inserted
+- **Result: 18,959 entities loaded** (9,670 entities, 7,465 individuals, 1,480 vessels, 344 aircraft), 20,296 aliases, 21,522 addresses, 12,722 identifiers
+
+**Task 1.2.2 — EU Consolidated Financial Sanctions List ingestion**
+- Created `ingestion/pipeline/sources/eu_sanctions.py` — XML parser using lxml
+- Parses 24MB XML with namespace `http://eu.europa.ec/fpi/fsd/export`
+- Extracts: nameAliases (primary = English strong alias), citizenship → nationality, birthdate, addresses, identifiers, regulation → legal_basis, programme → programs
+- **Result: 5,996 entities loaded** (4,410 individuals, 1,586 entities), 24,277 aliases, 2,443 addresses, 2,615 identifiers
+
+**Task 1.2.3 — OFAC Non-SDN list ingestion**
+- Created `ingestion/pipeline/sources/ofac_nonsdn.py` — reuses SDN parsing helpers with different source name and file paths
+- **Result: 442 entities loaded**
+
+**Task 1.2.4 — Incremental update logic**
+- Created `ingestion/pipeline/hashing.py` — `HashStore` class for SHA-256 hash-based file change detection
+- Integrated into `ingestion/pipeline/runner.py` — skips unchanged sources entirely
+- Verified: second run with unchanged files correctly skips all sources
+
+**Task 1.2.5 — S3 integration**
+- Created `ingestion/pipeline/loaders.py` — `S3Client` (upload/download/list/hash comparison), `acquire_direct_download()` helper, `download_file()` with retry logic
+- S3 key convention: `raw/{category}/{source_name}/{YYYY-MM-DD}/{filename}`
+- httpx async client with custom User-Agent, 3 retries with exponential backoff
+
+**Infrastructure created:**
+- `ingestion/pipeline/config.py` — IngestionConfig (pydantic-settings)
+- `ingestion/pipeline/db.py` — async session factory for ingestion
+- `ingestion/pipeline/db_models.py` — SQLAlchemy models (shared with backend)
+- `ingestion/pipeline/models.py` — IngestionResult and AcquisitionResult Pydantic models
+- `ingestion/pipeline/runner.py` — orchestrator with `REGISTERED_SOURCES` registry
+- `ingestion/scripts/ingest_all.py`, `ingest_incremental.py`, `ingest_ofac_sdn.py`, `ingest_ofac_nonsdn.py`, `ingest_eu_sanctions.py`
+
+**Total: 25,397 sanctioned entities across 3 sources in the database.**
+
+**What remains for Phase 1:** Tasks 1.3.1–1.3.5 (embedding model setup, PDF extraction, text chunking, enforcement PDF ingestion, OFAC guidance ingestion).
+
 ## 2026-05-14 — Session 4: Architecture Audit + Fixes
 
 ### Completed: Full architecture audit + fix all findings
