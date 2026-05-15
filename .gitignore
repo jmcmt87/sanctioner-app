@@ -13,3 +13,5 @@ build/
 node_modules/
 .DS_Store
 .tmp/
+ingestion/data/
+.ingestion_hashes.json
