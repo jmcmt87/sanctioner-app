@@ -1,5 +1,43 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-15 — Session 6: Test Suite for Existing Code
+
+### Completed: Unit tests for backend + ingestion (112 tests, all passing)
+
+**Backend tests (2 tests)**
+- Created `backend/tests/conftest.py` — AsyncClient fixture with ASGI transport (httpx, per testing skill standards)
+- Created `backend/tests/test_api/test_health.py` — Health endpoint returns 200 + correct body
+
+**Ingestion tests — OFAC SDN parsing (44 tests)**
+- Created `ingestion/tests/test_ofac_sdn_parsing.py`
+- Covers all pure parsing functions: `_clean` (5), `_parse_csv` (4), `_parse_dob` (7), `_parse_nationalities` (4), `_parse_programs` (5), `_parse_identifiers` (5), `_normalize_entity_type` (5), `_build_entity_dict` (9)
+- Tests entity, individual (DOB, nationality), and vessel (IMO, MMSI, build_year) parsing paths
+- Tests null sentinel handling, extended remarks, empty programs, alias/address preservation
+
+**Ingestion tests — EU Sanctions XML parsing (50 tests)**
+- Created `ingestion/tests/test_eu_sanctions_parsing.py`
+- Covers all XML parsing functions: `_attr` (4), `_normalize_entity_type` (3), `_parse_date` (4), `_extract_primary_name` (5), `_extract_citizenships` (3), `_extract_birthdate` (5), `_extract_addresses` (3), `_extract_identifications` (4), `_extract_regulations` (5), `_extract_remarks` (3), `_build_entity_dict` (9), `_parse_xml` (2)
+- Tests primary name selection strategy (English strong > any strong > first available)
+- Tests legal_basis extraction from regulation numberTitle, deduplication, earliest publication date tracking
+- Tests error handling: missing euReferenceNumber, missing name
+
+**Ingestion tests — Hashing module (16 tests)**
+- Created `ingestion/tests/test_hashing.py`
+- Covers: `compute_record_hash` (4), `compute_file_hash` (3), `compute_source_hash` (3), `HashStore` (6)
+- Tests determinism, key-order independence, disk persistence, multi-source independence
+
+**All code passes ruff check + ruff format in both packages.**
+
+### Blockers / Notes
+- No blockers encountered
+- Backend has minimal testable logic beyond health endpoint (agent, repositories, retrieval, routers not yet implemented)
+- Integration tests for full ingestion pipeline (DB-level) deferred — need testcontainers + running Docker
+- `httpx` is already a production dependency in backend; `testcontainers[postgres]` already in dev deps
+
+### Next step
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+- As each new component is built, write tests immediately per the testing skill standard
+
 ## 2026-05-15 — Session 5: Phase 1 Foundation + Structured Data Ingestion
 
 ### Completed: Tasks 1.1.2–1.1.4 and 1.2.1–1.2.5
