@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sanctions-db": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@bytebase/dbhub",
+        "--dsn",
+        "postgresql://postgres:postgres@localhost:5432/sanctions_db"
+      ]
+    }
+  }
+}

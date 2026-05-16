@@ -29,6 +29,10 @@ Schema changes go through Alembic migrations in `backend/alembic/`. Two migratio
 - **Entity type normalization.** OFAC uses finer distinctions (organization, government entity, etc.) but we normalize to four types: `individual`, `entity`, `vessel`, `aircraft`. The original sub-type is preserved in `raw_record` JSONB.
 - **TEXT columns instead of ENUMs for source, entity_type, jurisdiction.** New values can be added without database migrations.
 
+## MCP Access
+
+The project root `.mcp.json` configures a PostgreSQL MCP server ([`@bytebase/dbhub`](https://www.npmjs.com/package/@bytebase/dbhub)) that gives Claude Code read-only SQL access to this database. Subagents can use the `mcp__sanctions_db__*` tools to run queries for data quality reviews without going through the application layer. See the [root README](../../../README.md#mcp-server-postgresql) for details.
+
 ## Modifying the Schema
 
 1. Edit models in `models.py`

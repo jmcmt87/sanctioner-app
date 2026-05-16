@@ -35,6 +35,14 @@ uv run ruff check . --fix && uv run ruff format . # Lint + format
 - Depends on: PostgreSQL 16 + pgvector (via docker-compose.yml)
 - Depended on by: `ingestion/` (imports `app.db.models` as path dependency)
 
+## MCP Server (PostgreSQL Access for Agents)
+
+The project root contains `.mcp.json` which configures a PostgreSQL MCP server ([`@bytebase/dbhub`](https://www.npmjs.com/package/@bytebase/dbhub)) for Claude Code. This gives Claude (and subagents) direct read-only SQL access to the `sanctions_db` database running in Docker.
+
+This is intended for data quality reviews, schema validation, and development-time inspection. The PostgreSQL container must be running (`docker compose up -d` from this directory).
+
+Connection: `postgresql://postgres:postgres@localhost:5432/sanctions_db` (matches `docker-compose.yml`).
+
 ## Key Decisions
 
 - **Single database for structured data + vectors.** PostgreSQL with pgvector handles both entity tables and embedding search, avoiding a separate vector database. Keeps the deployment simple and lets SQL joins cross both worlds.

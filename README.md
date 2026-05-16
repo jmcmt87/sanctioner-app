@@ -86,6 +86,16 @@ sanctions-screening-assistant/
 └── task_plan.md         # Development roadmap
 ```
 
+## MCP Server (PostgreSQL)
+
+A [Model Context Protocol](https://modelcontextprotocol.io/) server is configured in `.mcp.json` to give Claude Code (and future subagents) read-only SQL access to the local PostgreSQL database. This is used for data quality reviews, schema inspection, and ad-hoc queries during development.
+
+**Prerequisites:** Docker must be running with the PostgreSQL container up (`cd backend && docker compose up -d`).
+
+The MCP server uses [`@bytebase/dbhub`](https://www.npmjs.com/package/@bytebase/dbhub) and connects to `postgresql://postgres:postgres@localhost:5432/sanctions_db`. It exposes tools for running read-only queries, listing schemas, and inspecting table structures.
+
+To verify the connection, start a new Claude Code session in this project and ask it to list tables or query data — the `mcp__sanctions_db__*` tools will be available automatically.
+
 ## Useful Links
 
 - [CLAUDE.md](./CLAUDE.md) -- Full project constitution (architecture, schema, conventions)

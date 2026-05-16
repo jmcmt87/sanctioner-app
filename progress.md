@@ -1,5 +1,29 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-16 — Session 9: PostgreSQL MCP Server Setup
+
+### Completed: MCP server for read-only PostgreSQL access
+
+**MCP Server Configuration**
+- Created `.mcp.json` at project root configuring `@bytebase/dbhub` as the PostgreSQL MCP server
+- Connects to `postgresql://postgres:postgres@localhost:5432/sanctions_db` (matches `docker-compose.yml`)
+- Provides read-only SQL access to Claude Code and future subagents
+- Intentionally avoided the deprecated `@modelcontextprotocol/server-postgres` (archived, has a SQL injection vulnerability allowing bypass of read-only restriction)
+
+**Documentation Updates**
+- `README.md` — Added "MCP Server (PostgreSQL)" section with prerequisites and verification instructions
+- `backend/README.md` — Added MCP section explaining read-only agent access to the database
+- `backend/app/db/README.md` — Added cross-reference to the MCP server for data quality workflows
+
+### Blockers / Notes
+- No blockers
+- The MCP server requires Docker PostgreSQL to be running (`cd backend && docker compose up -d`)
+- MCP tools become available in new Claude Code sessions (not the current one)
+
+### Next step
+- Create a data-quality-reviewer subagent in `.claude/agents/` that uses the MCP tools to inspect database contents
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+
 ## 2026-05-15 — Session 8: Architecture Audit (Documentation Focus) + READMEs
 
 ### Completed: Audit re-run + 6 READMEs following documentation-standard skill
