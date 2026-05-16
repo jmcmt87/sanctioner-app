@@ -10,11 +10,13 @@ from sqlalchemy import (
     Boolean,
     Date,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -92,6 +94,15 @@ class EntityAlias(Base):
 
 class Vessel(Base):
     __tablename__ = "vessels"
+    __table_args__ = (
+        Index(
+            "ix_vessels_imo_entity_unique",
+            "imo_number",
+            "entity_id",
+            unique=True,
+            postgresql_where=text("imo_number IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,

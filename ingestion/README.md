@@ -6,7 +6,7 @@ Downloads, parses, and loads sanctions data into PostgreSQL. Handles OFAC SDN/No
 
 | Directory/File | Purpose |
 | -------------- | ------- |
-| `pipeline/sources/` | One parser per data source (see [sources/README.md](pipeline/sources/README.md)) |
+| `pipeline/sources/` | One parser per data source (see [sources/README.md](pipeline/sources/README.md) for sanctions domain context, field coverage stats, and compliance use cases) |
 | `pipeline/runner.py` | Orchestrator: runs registered sources with hash-based change detection |
 | `pipeline/upsert.py` | Shared INSERT ON CONFLICT logic for all entity parsers |
 | `pipeline/loaders.py` | HTTP download with retry, S3 client wrapper |

@@ -1,5 +1,43 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-16 — Session 11: Domain Expert Feedback (models.py) + Source Documentation
+
+### Completed: Implemented domain expert feedback on models.py + wrote sanctions domain documentation
+
+**Domain Expert Feedback — Vessel IMO Uniqueness**
+- Added partial composite unique index `ix_vessels_imo_entity_unique` on `(imo_number, entity_id) WHERE imo_number IS NOT NULL`
+- A simple unique on `imo_number` alone failed: TASCA (IMO 9313149) is legitimately listed under both Russia/Ukraine (EO14024) and Iran (EO13846) programs as separate SDN entries
+- The composite index prevents the same vessel from being duplicated under the same parent entity while allowing valid cross-program designations
+- New Alembic migration: `a06fa9eb0762_add_partial_unique_index_on_vessels_imo_.py`
+- Model updated with `__table_args__` using `Index()` with `postgresql_where`
+
+**Domain Expert Feedback — tsv tsvector Column**
+- Confirmed already handled: existing migration `930864a558eb` (lines 142-149) creates the generated column + GIN index via raw SQL
+- No changes needed; SQLAlchemy doesn't handle `GENERATED ALWAYS AS` natively, so the migration approach is correct
+
+**Source Documentation (Sanctions Domain Perspective)**
+- Rewrote `ingestion/pipeline/sources/README.md` from ~48 lines to ~280 lines
+- Each implemented source (OFAC SDN, OFAC Non-SDN, EU Consolidated) now documented with:
+  - What the source is (regulatory authority, legal basis, consequence of designation)
+  - Entity composition with actual record counts from the database
+  - Program/regime distributions (top 10 with record counts)
+  - Field coverage stats (% populated per field, compliance significance)
+  - Related table statistics (aliases, addresses, identifiers, vessels, relationships)
+  - How compliance analysts use it (specific questions it answers)
+  - Source format details and refresh rationale
+- Added sections on planned sources (General Licenses, Enforcement, EU Regulations, Guidance)
+- Added cross-source relationships section (dual-jurisdiction comparison table, known overlaps, current gaps)
+- Updated `ingestion/README.md` reference to the expanded documentation
+
+### Blockers / Notes
+- Non-SDN record count (442 vs. expected ~1,900) flagged by DQR agent — the source data file may be a subset; warrants investigation
+- EU parser does not extract entity relationships (0 relationships vs. OFAC's 7,704) — known gap for future work
+
+### Next step
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+- Before starting 1.3, consider investigating the Non-SDN record count discrepancy (442 vs ~1,900 expected)
+- Consider improving the relationship regex to handle "S.A.", "CO., LTD." suffixes (would recover ~200+ of the 908 unresolved references)
+
 ## 2026-05-16 — Session 10: Data Quality Review, Parser Fixes, Re-Ingestion, Testing
 
 ### Completed: Full data quality cycle — audit → fix → re-ingest → verify → test
