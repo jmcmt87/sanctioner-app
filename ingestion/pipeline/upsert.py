@@ -11,6 +11,7 @@ from pipeline.db_models import (
     EntityAddress,
     EntityAlias,
     EntityIdentifier,
+    EntityRelationship,
     SanctionedEntity,
     Vessel,
 )
@@ -106,17 +107,26 @@ async def upsert_entities(
                 delete(EntityIdentifier).where(EntityIdentifier.entity_id == entity_id)
             )
             await session.execute(delete(Vessel).where(Vessel.entity_id == entity_id))
+            await session.execute(
+                delete(EntityRelationship).where(EntityRelationship.from_entity_id == entity_id)
+            )
 
+            # Deduplicate aliases on (alias_name, alias_type) before inserting
+            seen_aliases: set[tuple[str, str | None]] = set()
             for alias in entity_dict.get("aliases", []):
-                if alias.get("alias_name"):
-                    session.add(
-                        EntityAlias(
-                            entity_id=entity_id,
-                            alias_name=alias["alias_name"],
-                            alias_type=alias.get("alias_type"),
-                            is_primary=alias.get("is_primary", False),
+                alias_name = alias.get("alias_name")
+                if alias_name:
+                    key = (alias_name.lower(), alias.get("alias_type"))
+                    if key not in seen_aliases:
+                        seen_aliases.add(key)
+                        session.add(
+                            EntityAlias(
+                                entity_id=entity_id,
+                                alias_name=alias_name,
+                                alias_type=alias.get("alias_type"),
+                                is_primary=alias.get("is_primary", False),
+                            )
                         )
-                    )
 
             for addr in entity_dict.get("addresses", []):
                 if any(addr.get(f) for f in ("address", "city", "country")):

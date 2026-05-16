@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pipeline.db import async_session_factory
 from pipeline.hashing import HashStore, compute_source_hash
 from pipeline.models import IngestionResult
+from pipeline.relationships import resolve_relationships
 from pipeline.sources.eu_sanctions import ingest_eu_sanctions
 from pipeline.sources.ofac_nonsdn import ingest_ofac_nonsdn
 from pipeline.sources.ofac_sdn import ingest_ofac_sdn
@@ -87,5 +88,13 @@ async def run_ingestion(
             updated=result.records_updated,
             removed=result.records_removed,
         )
+
+    # Resolve "Linked To:" relationships after all sources are ingested
+    # so entities from all sources (SDN, Non-SDN, EU) are available for resolution.
+    async with async_session_factory() as session:
+        logger.info("resolving_relationships")
+        resolved, unresolved = await resolve_relationships(session)
+        logger.info("relationships_resolved", resolved=resolved, unresolved=unresolved)
+        await session.commit()
 
     return results
