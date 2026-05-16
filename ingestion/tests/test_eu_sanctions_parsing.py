@@ -226,6 +226,38 @@ class TestExtractBirthdate:
         )
         assert _extract_birthdate(entity) == date(1960, 1, 15)
 
+    def test_skips_solar_hijri_year_takes_gregorian(self):
+        """Solar Hijri year (1340) should be skipped; Gregorian equivalent used."""
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el("birthdate", {"year": "1340"}),
+                _el("birthdate", {"birthdate": "1961-03-15"}),
+            ],
+        )
+        assert _extract_birthdate(entity) == date(1961, 3, 15)
+
+    def test_solar_hijri_only_returns_none(self):
+        """When only a Solar Hijri date is available (no Gregorian), return None."""
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el("birthdate", {"year": "1340"}),
+            ],
+        )
+        assert _extract_birthdate(entity) is None
+
+    def test_skips_solar_hijri_full_date_attribute(self):
+        """Solar Hijri date via the full birthdate attribute should also be skipped."""
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el("birthdate", {"birthdate": "1352-06-01"}),
+                _el("birthdate", {"birthdate": "1973-08-23"}),
+            ],
+        )
+        assert _extract_birthdate(entity) == date(1973, 8, 23)
+
 
 # ── _extract_addresses ─────────────────────────────────────────────────────
 
@@ -387,6 +419,21 @@ class TestExtractRegulations:
         )
         _, _, earliest = _extract_regulations(entity)
         assert earliest == date(2014, 7, 31)
+
+    def test_regulation_with_short_year(self):
+        """Regulation numbers with fewer than 4 digits after the slash (e.g. 2025/44)."""
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el("regulation", {"numberTitle": "2020/716 (OJ L260)"}),
+                _el("regulation", {"numberTitle": "2025/44 (OJ L12)"}),
+                _el("regulation", {"numberTitle": "36/2011 (OJ L56)"}),
+            ],
+        )
+        legal_basis, _, _ = _extract_regulations(entity)
+        assert "Reg. 2020/716" in legal_basis
+        assert "Reg. 2025/44" in legal_basis
+        assert "Reg. 36/2011" in legal_basis
 
     def test_empty_regulations(self):
         entity = _el("sanctionEntity")

@@ -26,7 +26,7 @@ SOURCE_NAME = "eu_consolidated"
 NS = {"ns": "http://eu.europa.ec/fpi/fsd/export"}
 
 # Regex to extract regulation number from numberTitle like "269/2014 (OJ L78)"
-REGULATION_NUMBER_RE = re.compile(r"(\d+/\d{4})")
+REGULATION_NUMBER_RE = re.compile(r"(\d+/\d+)")
 
 
 def _attr(element: etree._Element, name: str) -> str | None:
@@ -159,13 +159,20 @@ def _extract_citizenships(entity_el: etree._Element) -> list[str]:
 
 
 def _extract_birthdate(entity_el: etree._Element) -> date | None:
-    """Extract the first complete birthdate from birthdate elements."""
+    """Extract the first valid Gregorian birthdate from birthdate elements.
+
+    Skips dates with year < 1900 (e.g. Solar Hijri calendar dates for Iranian
+    individuals). The EU XML typically provides both the SH date and its
+    Gregorian equivalent as separate ``<birthdate>`` entries.
+    """
     for bd in entity_el.findall("ns:birthdate", NS):
         # Try the full birthdate attribute first
         bd_str = _attr(bd, "birthdate")
         if bd_str:
             parsed = _parse_date(bd_str)
             if parsed:
+                if parsed.year < 1900:
+                    continue
                 return parsed
 
         # Fall back to individual components
@@ -175,6 +182,8 @@ def _extract_birthdate(entity_el: etree._Element) -> date | None:
         if year_str:
             try:
                 year = int(year_str)
+                if year < 1900:
+                    continue
                 month = int(month_str) if month_str else 1
                 day = int(day_str) if day_str else 1
                 return date(year, month, day)
