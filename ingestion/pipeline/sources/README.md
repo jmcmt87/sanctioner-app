@@ -1,6 +1,6 @@
 # Source Parsers
 
-Each file in this directory handles ingestion for one sanctions data source. All parsers follow the same pattern: read source files, normalize records into a standard dict format, call `upsert_entities()` to load into PostgreSQL, and log the run to `ingestion_log`.
+Each file in this directory handles ingestion for one sanctions data source. Structured parsers (OFAC SDN, Non-SDN, EU) normalize records into a standard dict format and call `upsert_entities()` to load into `sanctioned_entities`. Unstructured parsers (enforcement, guidance) extract PDF text, chunk it, generate embeddings, and store in `document_chunks` for RAG retrieval. All parsers log every run to `ingestion_log`.
 
 ---
 
@@ -11,10 +11,10 @@ Each file in this directory handles ingestion for one sanctions data source. All
 | OFAC SDN List | `ofac_sdn.py` | CSV (4 files) | Daily | Implemented |
 | OFAC Non-SDN Consolidated List | `ofac_nonsdn.py` | CSV (4 files) | Daily | Implemented |
 | EU Consolidated Financial Sanctions List | `eu_sanctions.py` | XML (lxml) | Daily | Implemented |
-| OFAC General Licenses | `general_licenses.py` | PDF | Weekly | Not started |
-| Enforcement Actions | `enforcement.py` | PDF | Monthly | Not started |
-| EU Regulations (833/2014, 269/2014) | `regulations.py` | HTML/PDF | Weekly check | Not started |
-| Guidance/FAQs | `guidance.py` | HTML/PDF | Monthly | Not started |
+| Enforcement Actions | `enforcement.py` | PDF (20 docs) | Monthly | Implemented |
+| OFAC Guidance | `guidance.py` | PDF (2 docs) | Quarterly | Implemented |
+| OFAC General Licenses | — | PDF | Weekly | Not started |
+| EU Regulations (833/2014, 269/2014) | — | HTML/PDF | Weekly check | Not started |
 
 ---
 
@@ -268,6 +268,91 @@ Single XML file following the `http://eu.europa.ec/fpi/fsd/export` namespace sch
 
 ---
 
+## OFAC Enforcement Actions
+
+### What It Is
+
+OFAC settlement agreements and penalty notices describing sanctions violations, penalty amounts, and compliance failures by companies. These are primary-source documents that analysts reference during investigations to understand precedent, risk factors, and penalty methodology.
+
+**Issuing authority**: OFAC, US Department of the Treasury
+
+**Pipeline**: PDF download (auto from OFAC website) -> PyMuPDF text extraction (Tesseract OCR fallback for scanned pages) -> chunking (~500 tokens, ~50 token overlap) -> BAAI/bge-m3 embedding -> storage in `document_chunks`
+
+### Document Inventory
+
+20 enforcement action PDFs covering major bank settlements and other notable cases:
+
+| Document | Year | Chunks | Settlement Amount |
+|----------|------|--------|-------------------|
+| BNP Paribas SA | 2014 | 21 | $963M |
+| Commerzbank AG | 2015 | 24 | $258M |
+| UniCredit Group | 2019 | 5 | $611M |
+| ING Bank N.V. | 2012 | 19 | $619M |
+| HSBC Holdings | 2012 | 18 | $375M |
+| Standard Chartered Bank | 2019 | 8 | $639M |
+| Clearstream Banking SA | 2014 | 10 | $152M |
+| Deutsche Bank AG | 2015 | 3 | $258M |
+| Societe Generale SA | 2018 | 1 | $54M |
+| Credit Suisse AG | 2009 | 3 | $536M |
+| JPMorgan Chase Bank | 2011 | 7 | $88M |
+| Barclays Bank PLC | 2010 | 13 | $176M |
+| PayPal Inc. | 2015 | 10 | $7.7M |
+| ZTE/Zhongxing Telecom | 2017 | 3 | $100M |
+| Epsilon Electronics | 2018 | 3 | $4M |
+| ExxonMobil | 2017 | 5 | $2M |
+| General Electric | 2019 | 5 | $2.7M |
+| BitGo Inc. | 2020 | 8 | $98K |
+| Bittrex Inc. | 2022 | 18 | $24M |
+| Apollo Aviation Group | 2019 | 23 | $210K |
+
+**Total**: 207 chunks, 325K characters of text, all with 1024-dim bge-m3 embeddings.
+
+Tags: `jurisdiction='US'`, `document_type='enforcement'`
+
+### How Compliance Analysts Use It
+
+- **Precedent research**: "Has any bank been fined for transactions with entity X?"
+- **Penalty methodology**: "What factors did OFAC consider in determining the penalty amount?"
+- **Compliance program benchmarking**: "What compliance failures led to enforcement actions?"
+- **Risk assessment**: "What types of sanctions violations result in the largest penalties?"
+
+### Refresh Rationale
+
+**Monthly**. New enforcement actions are published as they occur. Monthly check captures new settlements.
+
+---
+
+## OFAC Guidance Documents
+
+### What It Is
+
+Interpretive guidance from OFAC that explains how to apply sanctions rules in specific situations. These are the documents analysts consult to understand policy intent beyond the raw legal text.
+
+**Pipeline**: Same as enforcement — PDF download -> extraction -> chunking -> embedding -> `document_chunks`
+
+### Document Inventory
+
+| Document | Chunks | Description |
+|----------|--------|-------------|
+| OFAC Compliance Framework | 22 | The "Five Pillars" of an effective OFAC compliance program (management commitment, risk assessment, internal controls, testing/audit, training) |
+| 50% Rule Guidance | 4 | How to determine whether an entity is blocked by virtue of 50%+ ownership by an SDN-listed person |
+
+**Total**: 26 chunks, 40K characters.
+
+Tags: `jurisdiction='US'`, `document_type='guidance'`
+
+### How Compliance Analysts Use It
+
+- **Compliance program design**: "What are the five pillars of an effective sanctions compliance program?"
+- **50% Rule analysis**: "How do I calculate ownership for 50% Rule purposes when there are multiple blocked owners?"
+- **Risk assessment**: "What factors should I consider in my OFAC risk assessment?"
+
+### Refresh Rationale
+
+**Quarterly**. OFAC guidance changes infrequently.
+
+---
+
 ## Planned Sources (Not Yet Implemented)
 
 ### OFAC General Licenses
@@ -278,14 +363,6 @@ Single XML file following the `http://eu.europa.ec/fpi/fsd/export` namespace sch
 
 **Compliance use**: Transaction authorization, wind-down planning, humanitarian exemptions.
 
-### Enforcement Actions
-
-**What**: OFAC settlement agreements and penalty notices describing sanctions violations, penalty amounts, and compliance failures.
-
-**Format**: PDF documents (2-20 pages each). **Refresh**: Monthly.
-
-**Compliance use**: "Has any bank been fined for transactions with entity X?", risk assessment, compliance program benchmarking.
-
 ### EU Regulation Text (Reg. 833/2014, Reg. 269/2014)
 
 **What**: The full legal text of EU sanctions regulations. The entity list tells you WHO is sanctioned; the regulation text tells you WHAT is prohibited. Reg. 833/2014 imposes sectoral restrictions that apply to entire categories of activity (energy, trade, finance) regardless of whether a specific entity is individually designated.
@@ -294,9 +371,9 @@ Single XML file following the `http://eu.europa.ec/fpi/fsd/export` namespace sch
 
 **Compliance use**: "Can my bank provide investment services to a Russian national?", "What goods are restricted under the oil price cap?"
 
-### Guidance Documents and FAQs
+### Additional Guidance Sources
 
-**What**: Interpretive guidance from OFAC, European Commission, Bundesbank, and BaFin that explains how to apply sanctions rules in specific situations. Regulations say what is prohibited; guidance says how to interpret ambiguity.
+**What**: Further interpretive guidance beyond the two OFAC documents currently ingested.
 
 **Sources**: OFAC FAQs (1,000+ Q&As), EU Commission FAQ on Russia sanctions, Bundesbank/BaFin circulars.
 
@@ -332,13 +409,15 @@ European banks operating in USD markets must comply with **both** OFAC and EU sa
 1. **No cross-list entity linking**: The same real-world entity across OFAC and EU records is not automatically matched
 2. **EU relationships not extracted**: 50% Rule chain analysis is OFAC-only
 3. **No regulation text ingested**: Cannot answer "what activities are prohibited" — only "who is designated"
-4. **No document chunks**: The RAG layer (`document_chunks` table) is empty — no enforcement actions, guidance, or regulation text for retrieval
+4. **No General Licenses**: Cannot answer "what is authorized?" — only "what is blocked"
 
 ---
 
 ## Adding a New Source
 
-1. Create a new file in this directory: `new_source.py`
+### Structured Source (entities -> `sanctioned_entities`)
+
+1. Create `new_source.py` in this directory
 2. Implement the standard function signature:
    ```python
    async def ingest_new_source(session: AsyncSession, data_dir: Path) -> IngestionResult:
@@ -353,9 +432,24 @@ European banks operating in USD markets must comply with **both** OFAC and EU sa
     "identifiers": [{"id_type", "id_value", "country"}],
     "vessels": [{"vessel_name", "imo_number", ...}]}
    ```
-4. Register in `runner.py`:
+
+### Unstructured Source (documents -> `document_chunks`)
+
+1. Create `new_source.py` in this directory
+2. Define a manifest dict mapping document slugs to URLs, titles, and published dates
+3. Use the shared infrastructure:
+   - `pipeline.extraction.extract_pdf()` for PDF text extraction
+   - `pipeline.chunking.text_chunker.TextChunker` for chunking
+   - `pipeline.embeddings.EmbeddingModel` for embedding generation
+   - `pipeline.chunk_store.store_document_chunks()` for storage (full-replace strategy)
+4. Tag every chunk with `jurisdiction` (US/EU/DE) and `document_type` (enforcement/regulation/guidance/faq/general_license)
+
+### Both types
+
+5. Register in `runner.py`:
    ```python
    REGISTERED_SOURCES["new_source"] = ingest_new_source
-   SOURCE_FILES["new_source"] = ["new_source/*.csv"]
+   SOURCE_FILES["new_source"] = ["new_source/*.pdf"]
    ```
-5. Update this README's source inventory table.
+6. Add a script in `scripts/ingest_new_source.py`
+7. Update this README's source inventory table

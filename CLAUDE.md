@@ -186,12 +186,20 @@ Rules: every record carries `data_vintage` + `ingestion_timestamp`. Every API re
 ## Development Workflow
 
 1. `docker-compose.yml` for PostgreSQL + pgvector (in `backend/`)
-2. `cd backend && uv sync` or `cd ingestion && uv sync`
+2. `cd backend && uv sync` or `cd ingestion && uv sync --extra dev`
 3. Backend: `cd backend && uv run uvicorn app.main:app --reload`
 4. Migrations: `cd backend && uv run alembic upgrade head`
-5. Ingestion: `cd ingestion && uv run python scripts/ingest_all.py`
-6. Tests: `cd backend && uv run pytest`
-7. Lint: `uv run ruff check . --fix && uv run ruff format .`
+5. Structured ingestion: `cd ingestion && uv run python scripts/ingest_ofac_sdn.py` (runs natively)
+6. Unstructured ingestion (enforcement/guidance PDFs): requires PyTorch for embeddings — use Docker (see `ingestion/README.md`):
+   ```bash
+   docker build -f ingestion/Dockerfile -t sanctions-ingestion .  # one-time
+   docker run --rm --add-host=host.docker.internal:host-gateway \
+     -e SSA_DATABASE_URL="postgresql+asyncpg://postgres:postgres@host.docker.internal:5432/sanctions_db" \
+     -v $(pwd)/ingestion/data:/app/ingestion/data \
+     sanctions-ingestion uv run python scripts/ingest_enforcement.py
+   ```
+7. Tests: `cd ingestion && uv run pytest` or `cd backend && uv run pytest`
+8. Lint: `uv run ruff check . --fix && uv run ruff format .`
 
 ## Common Tasks
 

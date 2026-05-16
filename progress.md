@@ -1,5 +1,77 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-16 — Session 12: Phase 1.3 — Unstructured Data Ingestion (Complete)
+
+### Completed: Full unstructured data pipeline + 22 PDFs ingested into PostgreSQL
+
+**Phase 1.3.1 — Embedding Model Wrapper** (`pipeline/embeddings.py`)
+- `EmbeddingModel` class wrapping sentence-transformers (BAAI/bge-m3, 1024-dim)
+- Lazy loading: model (~2.3GB) only downloads on first `embed()` call
+- `embed_batch()`, `embed_single()`, `dimension` property
+- 10 tests in `test_embeddings.py`
+
+**Phase 1.3.2 — PDF Extraction Pipeline** (`pipeline/extraction.py`)
+- PyMuPDF primary extraction with Tesseract OCR fallback for scanned pages
+- Quality scoring (printable character ratio), page cleaning (page numbers, whitespace)
+- `ExtractedDocument` Pydantic model with text, page_count, ocr_pages, extraction_quality
+- 13 tests in `test_extraction.py`
+
+**Phase 1.3.3 — Text Chunking** (`pipeline/chunking/text_chunker.py`)
+- RecursiveCharacterTextSplitter wrapper (2000 chars chunk, 200 chars overlap, ~500 tokens)
+- `ChunkMetadata` validation: jurisdiction (US/EU/DE), document_type (enforcement/regulation/guidance/faq/general_license)
+- Quality warnings for chunks < 50 chars or > 3500 chars
+- 12 tests in `test_text_chunker.py`
+
+**Document Chunk Storage** (`pipeline/chunk_store.py`)
+- `store_document_chunks()` with full-replace strategy (delete existing + insert new)
+- 5 tests in `test_chunk_store.py`
+
+**Phase 1.3.4 — Enforcement PDF Ingestion** (`pipeline/sources/enforcement.py`)
+- 20 OFAC enforcement action PDFs with auto-download manifest
+- Fixed 14 broken OFAC URLs (OFAC restructured their media URLs since manifest was compiled)
+- Tags: `jurisdiction='US'`, `document_type='enforcement'`
+- **Result: 207 chunks stored, 325K characters, all with bge-m3 embeddings**
+- 21 tests in `test_enforcement.py`
+
+**Phase 1.3.5 — Guidance Document Ingestion** (`pipeline/sources/guidance.py`)
+- OFAC Compliance Framework (22 chunks) + 50% Rule Guidance (4 chunks)
+- Tags: `jurisdiction='US'`, `document_type='guidance'`
+- **Result: 26 chunks stored, 40K characters**
+- 16 tests in `test_guidance.py`
+
+**Infrastructure & Documentation**
+- `ingestion/Dockerfile` — Linux container with PyTorch + sentence-transformers (required because PyTorch has no macOS x86_64 + Python 3.13 wheel)
+- `scripts/ingest_enforcement.py`, `scripts/ingest_guidance.py` — standalone scripts
+- Runner updated: 5 registered sources (ofac_sdn, ofac_nonsdn, eu_consolidated, enforcement, guidance)
+- `ingestion/README.md` — expanded with Docker workflow, registered sources table, data layout
+- `CLAUDE.md` — development workflow updated with Docker ingestion instructions
+- `pipeline/sources/README.md` — enforcement/guidance documented with chunk counts, settlement amounts, analyst use cases; gaps list updated
+- Dependencies added: `pymupdf>=1.25.0`, `pytesseract>=0.3.13`, `Pillow>=11.0.0`
+
+**Test Suite: 274 tests, all passing** (up from 195)
+
+### Database State (All 5 Sources)
+
+| Source | Type | Table | Records |
+|--------|------|-------|---------|
+| ofac_sdn | Structured | sanctioned_entities | 18,959 |
+| ofac_nonsdn | Structured | sanctioned_entities | 442 |
+| eu_consolidated | Structured | sanctioned_entities | 5,996 |
+| enforcement | Unstructured | document_chunks | 207 |
+| guidance | Unstructured | document_chunks | 26 |
+
+### Errors Encountered & Resolved
+- **PyTorch wheel incompatibility**: `torch==2.11.0` has no wheel for macOS x86_64 + Python 3.13. Resolved by building a Docker image for ingestion.
+- **Corrupted venv**: Mixing `uv sync` and `uv pip install` corrupted packages. Fix: `rm -rf .venv && uv sync --extra dev`
+- **14 broken OFAC URLs**: OFAC restructured their website. All 14 URLs researched and corrected via web search.
+- **macOS duplicate files**: Finder created `CLAUDE 2.md`, `enforcement 2.py`, `test_runner 2.py` — deleted.
+
+### Next Step
+- Phase 2 planning: Backend agent pipeline (LangGraph), retrieval layer (BM25 + semantic search), API endpoints
+- Before Phase 2, consider: running a DQR audit on the new document_chunks data; investigating Non-SDN record count (442 vs ~1,900 expected)
+
+---
+
 ## 2026-05-16 — Session 11: Domain Expert Feedback (models.py) + Source Documentation
 
 ### Completed: Implemented domain expert feedback on models.py + wrote sanctions domain documentation

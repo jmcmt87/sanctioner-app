@@ -14,7 +14,7 @@ class TestSourceRegistration:
     """Verify all expected sources are registered and correctly configured."""
 
     def test_all_expected_sources_registered(self):
-        expected = {"ofac_sdn", "ofac_nonsdn", "eu_consolidated"}
+        expected = {"ofac_sdn", "ofac_nonsdn", "eu_consolidated", "enforcement", "guidance"}
         assert set(REGISTERED_SOURCES.keys()) == expected
 
     def test_every_registered_source_has_file_pattern(self):
@@ -65,6 +65,24 @@ class TestSourceFilePatterns:
     def test_eu_pattern_points_to_eu_dir(self):
         patterns = SOURCE_FILES["eu_consolidated"]
         assert all(p.startswith("eu_consolidated/") for p in patterns)
+
+    def test_enforcement_pattern_is_pdf(self):
+        patterns = SOURCE_FILES["enforcement"]
+        assert len(patterns) >= 1
+        assert all("*.pdf" in p for p in patterns)
+
+    def test_enforcement_pattern_points_to_enforcement_dir(self):
+        patterns = SOURCE_FILES["enforcement"]
+        assert all(p.startswith("enforcement/") for p in patterns)
+
+    def test_guidance_pattern_is_pdf(self):
+        patterns = SOURCE_FILES["guidance"]
+        assert len(patterns) >= 1
+        assert all("*.pdf" in p for p in patterns)
+
+    def test_guidance_pattern_points_to_guidance_dir(self):
+        patterns = SOURCE_FILES["guidance"]
+        assert all(p.startswith("guidance/") for p in patterns)
 
 
 class TestHashSkipLogic:

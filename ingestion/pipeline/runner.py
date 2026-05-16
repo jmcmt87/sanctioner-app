@@ -12,7 +12,9 @@ from pipeline.db import async_session_factory
 from pipeline.hashing import HashStore, compute_source_hash
 from pipeline.models import IngestionResult
 from pipeline.relationships import resolve_relationships
+from pipeline.sources.enforcement import ingest_enforcement_pdfs
 from pipeline.sources.eu_sanctions import ingest_eu_sanctions
+from pipeline.sources.guidance import ingest_guidance_docs
 from pipeline.sources.ofac_nonsdn import ingest_ofac_nonsdn
 from pipeline.sources.ofac_sdn import ingest_ofac_sdn
 
@@ -24,12 +26,16 @@ REGISTERED_SOURCES: dict[str, SourceHandler] = {
     "ofac_sdn": ingest_ofac_sdn,
     "ofac_nonsdn": ingest_ofac_nonsdn,
     "eu_consolidated": ingest_eu_sanctions,
+    "enforcement": ingest_enforcement_pdfs,
+    "guidance": ingest_guidance_docs,
 }
 
 SOURCE_FILES: dict[str, list[str]] = {
     "ofac_sdn": ["ofac_sdn/*.csv"],
     "ofac_nonsdn": ["ofac_nonsdn/*.csv"],
     "eu_consolidated": ["eu_consolidated/*.xml"],
+    "enforcement": ["enforcement/*.pdf"],
+    "guidance": ["guidance/*.pdf"],
 }
 
 
