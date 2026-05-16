@@ -49,7 +49,7 @@ async def _process_pdf(
     """Extract, chunk, embed, and store a single guidance PDF. Returns chunk count."""
     log = logger.bind(slug=slug, path=str(pdf_path))
 
-    doc = extract_pdf(pdf_path)
+    doc = await extract_pdf(pdf_path)
     log.info(
         "pdf_extracted",
         page_count=doc.page_count,

@@ -15,7 +15,9 @@ from pipeline.extraction import (
     ExtractedDocument,
     _calculate_quality,
     _clean_page_text,
-    extract_pdf,
+)
+from pipeline.extraction import (
+    _extract_pdf_sync as extract_pdf,
 )
 
 

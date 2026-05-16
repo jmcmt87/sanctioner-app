@@ -7,6 +7,7 @@ action PDFs and older regulatory guidance documents).
 
 from __future__ import annotations
 
+import asyncio
 import io
 import re
 import string
@@ -32,7 +33,7 @@ class ExtractedDocument(BaseModel):
     extraction_quality: float
 
 
-def extract_pdf(path: Path) -> ExtractedDocument:
+def _extract_pdf_sync(path: Path) -> ExtractedDocument:
     """Extract text from a PDF, falling back to OCR for scanned pages."""
     if not path.exists():
         msg = f"PDF file not found: {path}"
@@ -116,3 +117,8 @@ def _calculate_quality(text: str) -> float:
         return 0.0
     printable_count = sum(1 for c in text if c in PRINTABLE_CHARS)
     return printable_count / len(text)
+
+
+async def extract_pdf(path: Path) -> ExtractedDocument:
+    """Async wrapper around PDF extraction — offloads blocking I/O to a thread."""
+    return await asyncio.to_thread(_extract_pdf_sync, path)

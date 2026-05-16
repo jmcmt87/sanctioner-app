@@ -7,6 +7,7 @@ ingestion pattern.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -513,8 +514,8 @@ async def ingest_eu_sanctions(
     status = "completed"
 
     try:
-        # Step 1 + 2: Parse the XML
-        entity_elements, generation_date = _parse_xml(xml_path)
+        # Step 1 + 2: Parse the XML (offload blocking I/O to thread)
+        entity_elements, generation_date = await asyncio.to_thread(_parse_xml, xml_path)
         if generation_date:
             now = generation_date
 

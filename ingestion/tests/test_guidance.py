@@ -55,7 +55,7 @@ class TestIngestGuidanceDocs:
 
     @pytest.fixture()
     def _mock_extract(self):
-        with patch("pipeline.sources.guidance.extract_pdf") as mock:
+        with patch("pipeline.sources.guidance.extract_pdf", new_callable=AsyncMock) as mock:
             mock.return_value = ExtractedDocument(
                 text="This is guidance document content for testing purposes.",
                 page_count=5,

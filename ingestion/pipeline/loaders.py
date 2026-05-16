@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import structlog
@@ -69,7 +70,7 @@ class S3Client:
         self._config = config
         self._client = self._create_client()
 
-    def _create_client(self):  # noqa: ANN202
+    def _create_client(self) -> Any:
         import boto3
 
         kwargs: dict = {"region_name": self._config.s3_region}

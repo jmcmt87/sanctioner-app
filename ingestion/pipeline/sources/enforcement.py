@@ -157,7 +157,7 @@ async def ingest_enforcement_pdfs(
                 pdf_log.info("pdf_downloaded")
 
             # Extract text
-            extracted = extract_pdf(pdf_path)
+            extracted = await extract_pdf(pdf_path)
 
             if extracted.extraction_quality < 0.5:
                 pdf_log.warning(

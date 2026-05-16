@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import structlog
 from sqlalchemy import delete, select
@@ -86,20 +87,14 @@ async def upsert_entities(
                     "raw_record": stmt.excluded.raw_record,
                 },
             )
-            await session.execute(stmt)
+            # Use RETURNING to get the entity ID directly, eliminating the N+1 SELECT
+            upsert_result = await session.execute(stmt.returning(SanctionedEntity.id))
+            entity_id: UUID = upsert_result.scalar_one()
 
             if is_update:
                 records_updated += 1
             else:
                 records_added += 1
-
-            ent_result = await session.execute(
-                select(SanctionedEntity.id).where(
-                    SanctionedEntity.source == source_name,
-                    SanctionedEntity.source_id == source_id,
-                )
-            )
-            entity_id = ent_result.scalar_one()
 
             await session.execute(delete(EntityAlias).where(EntityAlias.entity_id == entity_id))
             await session.execute(delete(EntityAddress).where(EntityAddress.entity_id == entity_id))
@@ -111,7 +106,6 @@ async def upsert_entities(
                 delete(EntityRelationship).where(EntityRelationship.from_entity_id == entity_id)
             )
 
-            # Deduplicate aliases on (alias_name, alias_type) before inserting
             seen_aliases: set[tuple[str, str | None]] = set()
             for alias in entity_dict.get("aliases", []):
                 alias_name = alias.get("alias_name")

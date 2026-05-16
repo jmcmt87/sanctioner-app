@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -45,10 +46,12 @@ async def ingest_ofac_nonsdn(
     status = "completed"
 
     try:
-        sdn_rows = _parse_csv(source_dir / "cons_prim.csv", SDN_COLUMNS)
-        add_rows = _parse_csv(source_dir / "cons_add.csv", ADD_COLUMNS)
-        alt_rows = _parse_csv(source_dir / "cons_alt.csv", ALT_COLUMNS)
-        comments_rows = _parse_csv(source_dir / "cons_comments.csv", COMMENTS_COLUMNS)
+        sdn_rows = await asyncio.to_thread(_parse_csv, source_dir / "cons_prim.csv", SDN_COLUMNS)
+        add_rows = await asyncio.to_thread(_parse_csv, source_dir / "cons_add.csv", ADD_COLUMNS)
+        alt_rows = await asyncio.to_thread(_parse_csv, source_dir / "cons_alt.csv", ALT_COLUMNS)
+        comments_rows = await asyncio.to_thread(
+            _parse_csv, source_dir / "cons_comments.csv", COMMENTS_COLUMNS
+        )
 
         log.info(
             "csv_files_parsed",

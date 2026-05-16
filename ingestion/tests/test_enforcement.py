@@ -118,6 +118,7 @@ class TestIngestEnforcementPdfs:
             ) as mock_download,
             patch(
                 "pipeline.sources.enforcement.extract_pdf",
+                new_callable=AsyncMock,
             ) as mock_extract,
             patch(
                 "pipeline.sources.enforcement.EmbeddingModel",

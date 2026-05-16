@@ -1,5 +1,52 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 13: Architecture Audit + Ingestion Improvements
+
+### Completed: Audit-driven performance and async safety improvements
+
+**Architecture Audit (scoped to `ingestion/` only)**
+- Ran architecture-auditor agent — verdict: PASS (A-)
+- No critical issues; 4 important items identified and fixed
+- Report saved to `.tmp/audit_report_2026-05-16.md`
+
+**I2 — N+1 Query Elimination in `upsert.py` (highest-value fix)**
+- Replaced INSERT + separate SELECT per entity with `INSERT ... RETURNING id`
+- Eliminates ~76K redundant queries per SDN ingestion run
+- Expected to significantly reduce the 7-minute SDN ingestion time
+
+**I1 — Async File I/O (4 parsers fixed)**
+- `extraction.py`: Split into `_extract_pdf_sync()` + async `extract_pdf()` using `asyncio.to_thread()`
+- `ofac_sdn.py`: `_parse_csv()` calls wrapped in `asyncio.to_thread()`
+- `ofac_nonsdn.py`: Same treatment
+- `eu_sanctions.py`: `_parse_xml()` wrapped in `asyncio.to_thread()`
+- Safe for concurrent execution if parsers are ever run in parallel
+
+**I4 — CLAUDE.md Documentation Fix**
+- Removed nonexistent `ofac_vessels.py` from parent CLAUDE.md project tree
+- Updated `ofac_sdn.py` description to note it includes vessel designations
+
+**M5 — Missing Return Type Annotation**
+- Added `-> Any` to `S3Client._create_client()`, removed `# noqa: ANN202`
+
+**M6 — Root conftest.py for Test Import Resolution**
+- Added `ingestion/conftest.py` that ensures `backend` package is on sys.path
+- Fixes pre-existing `.pth` editable-install issue that required manual `PYTHONPATH`
+
+**Test Updates**
+- Enforcement/guidance test mocks updated to `AsyncMock` for async `extract_pdf`
+- Extraction tests import `_extract_pdf_sync` directly (testing sync extraction logic)
+- **All 274 tests pass. Ruff lint + format clean.**
+
+### Errors Encountered
+- Pre-existing: `.pth` editable install not adding backend to sys.path (fixed with conftest.py)
+- No new errors introduced
+
+### Next Step
+- Phase 2 planning: Backend agent pipeline (LangGraph), retrieval layer (BM25 + semantic search), API endpoints
+- Consider benchmarking SDN ingestion time after the RETURNING id fix
+
+---
+
 ## 2026-05-16 — Session 12: Phase 1.3 — Unstructured Data Ingestion (Complete)
 
 ### Completed: Full unstructured data pipeline + 22 PDFs ingested into PostgreSQL
