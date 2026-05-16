@@ -16,3 +16,4 @@ node_modules/
 ingestion/data/
 .ingestion_hashes.json
 .claude/agent-memory/architecture-auditor/
+human_notes.txt
