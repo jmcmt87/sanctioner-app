@@ -93,7 +93,25 @@ IDENTIFIER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"Identification Number " + _ID_SUFFIX,
         ),
     ),
+    ("C.U.R.P.", re.compile(r"C\.U\.R\.P\.\s*" + _ID_SUFFIX)),
+    ("R.F.C.", re.compile(r"R\.F\.C\.\s*" + _ID_SUFFIX)),
+    ("USCC", re.compile(r"(?:Unified Social Credit Code \(USCC\)|USCC)\s*" + _ID_SUFFIX)),
+    ("SWIFT/BIC", re.compile(r"(?:alt\. )?SWIFT/BIC\s*" + _ID_SUFFIX)),
+    ("Trade License", re.compile(r"Trade License No\.\s*" + _ID_SUFFIX)),
+    ("D.N.I.", re.compile(r"D\.N\.I\.\s*" + _ID_SUFFIX)),
+    ("D-U-N-S", re.compile(r"D-U-N-S Number\s*" + _ID_SUFFIX)),
+    ("Enterprise Number", re.compile(r"Enterprise Number\s*" + _ID_SUFFIX)),
+    ("Driver's License", re.compile(r"Driver's License No\.\s*" + _ID_SUFFIX)),
+    ("BIK", re.compile(r"(?:alt\. )?BIK\s*(?:\(RU\)\s*)?" + _ID_SUFFIX)),
+    ("Phone Number", re.compile(r"Phone Number\s*" + _ID_SUFFIX)),
+    ("License", re.compile(r"(?:alt\. )?License\s+" + _ID_SUFFIX)),
 ]
+
+DIGITAL_CURRENCY_RE = re.compile(r"(?:alt\. )?Digital Currency Address - (\w+)\s+([^;]+?)(?:;|$)")
+
+REGISTRATION_COUNTRY_RE = re.compile(r"Nationality of Registration ([^;]+)")
+
+AKA_RE = re.compile(r"(a\.k\.a\.|f\.k\.a\.)\s+'([^']+)'")
 
 MONTH_MAP = {
     "jan": 1,
@@ -179,7 +197,37 @@ def _parse_identifiers(remarks: str) -> list[dict[str, str | None]]:
             country = match.group(2).strip() if match.group(2) else None
             if id_value:
                 identifiers.append({"id_type": id_type, "id_value": id_value, "country": country})
+
+    # Digital Currency Addresses have a different capture group layout:
+    # group(1) = currency (e.g. "XBT"), group(2) = address
+    for match in DIGITAL_CURRENCY_RE.finditer(remarks):
+        currency = match.group(1).strip()
+        address = match.group(2).strip()
+        if address:
+            identifiers.append(
+                {
+                    "id_type": f"Digital Currency Address - {currency}",
+                    "id_value": address,
+                    "country": None,
+                }
+            )
+
     return identifiers
+
+
+def _parse_inline_aliases(remarks: str) -> list[dict[str, str | None]]:
+    """Extract a.k.a./f.k.a. aliases from remarks text."""
+    aliases: list[dict[str, str | None]] = []
+    for match in AKA_RE.finditer(remarks):
+        alias_type = "aka" if match.group(1) == "a.k.a." else "fka"
+        aliases.append(
+            {
+                "alias_name": match.group(2).strip(),
+                "alias_type": alias_type,
+                "is_primary": False,
+            }
+        )
+    return aliases
 
 
 def _normalize_entity_type(sdn_type: str | None) -> str:
@@ -233,6 +281,13 @@ def _build_entity_dict(
             }
         )
 
+    # Extract country_of_registration from remarks for non-individual entities
+    country_of_registration: str | None = None
+    if entity_type == "entity" and remarks:
+        reg_country_match = REGISTRATION_COUNTRY_RE.search(remarks)
+        if reg_country_match:
+            country_of_registration = reg_country_match.group(1).strip().rstrip(".")
+
     normalized_aliases = [
         {
             "alias_name": row.get("alt_name"),
@@ -242,6 +297,17 @@ def _build_entity_dict(
         for row in aliases
         if row.get("alt_name")
     ]
+
+    # Merge inline a.k.a./f.k.a. aliases from remarks, deduplicating against alt.csv aliases
+    if remarks:
+        inline_aliases = _parse_inline_aliases(remarks)
+        existing_names = {
+            a["alias_name"].lower() for a in normalized_aliases if a.get("alias_name")
+        }
+        for ia in inline_aliases:
+            if ia["alias_name"] and ia["alias_name"].lower() not in existing_names:
+                normalized_aliases.append(ia)
+                existing_names.add(ia["alias_name"].lower())
 
     normalized_addresses = [
         {
@@ -269,6 +335,7 @@ def _build_entity_dict(
         "programs": programs or None,
         "date_of_birth": dob,
         "nationality": nationalities or None,
+        "country_of_registration": country_of_registration,
         "remarks": remarks or None,
         "data_vintage": now,
         "last_updated": now,
@@ -374,6 +441,7 @@ async def ingest_ofac_sdn(
 
         if records_skipped > 0:
             status = "completed_with_errors"
+            error_message = f"{records_skipped} record(s) skipped during parsing"
 
     except Exception as e:
         status = "failed"

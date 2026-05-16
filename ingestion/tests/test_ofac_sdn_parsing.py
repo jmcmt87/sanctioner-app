@@ -15,6 +15,7 @@ from pipeline.sources.ofac_sdn import (
     _parse_csv,
     _parse_dob,
     _parse_identifiers,
+    _parse_inline_aliases,
     _parse_nationalities,
     _parse_programs,
 )
@@ -207,6 +208,84 @@ class TestParseIdentifiers:
         assert reg["id_value"] == "ABC123"
         assert reg["country"] is None
 
+    def test_curp_extraction(self):
+        remarks = "C.U.R.P. BOFH701002MBCRGL02 (Mexico)"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        curp = next(i for i in result if i["id_type"] == "C.U.R.P.")
+        assert curp["id_value"] == "BOFH701002MBCRGL02"
+        assert curp["country"] == "Mexico"
+
+    def test_rfc_extraction(self):
+        remarks = "R.F.C. BOFH701002XYZ (Mexico)"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        rfc = next(i for i in result if i["id_type"] == "R.F.C.")
+        assert rfc["id_value"] == "BOFH701002XYZ"
+        assert rfc["country"] == "Mexico"
+
+    def test_swift_bic_extraction(self):
+        remarks = "SWIFT/BIC VTBRRUMM; alt. SWIFT/BIC SABRRUMM"
+        result = _parse_identifiers(remarks)
+        swift_ids = [i for i in result if i["id_type"] == "SWIFT/BIC"]
+        assert len(swift_ids) == 2
+        values = {i["id_value"] for i in swift_ids}
+        assert "VTBRRUMM" in values
+        assert "SABRRUMM" in values
+
+    def test_uscc_extraction(self):
+        remarks = "Unified Social Credit Code (USCC) 913307230927997015 (China)"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        uscc = next(i for i in result if i["id_type"] == "USCC")
+        assert uscc["id_value"] == "913307230927997015"
+        assert uscc["country"] == "China"
+
+    def test_trade_license_extraction(self):
+        remarks = "Trade License No. 12345 (Dubai)"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        tl = next(i for i in result if i["id_type"] == "Trade License")
+        assert tl["id_value"] == "12345"
+        assert tl["country"] == "Dubai"
+
+    def test_digital_currency_address_extraction(self):
+        remarks = "Digital Currency Address - XBT bc1qwa6xyz123;"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        dca = next(i for i in result if i["id_type"] == "Digital Currency Address - XBT")
+        assert dca["id_value"] == "bc1qwa6xyz123"
+        assert dca["country"] is None
+
+    def test_duns_extraction(self):
+        remarks = "D-U-N-S Number 123456789;"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        duns = next(i for i in result if i["id_type"] == "D-U-N-S")
+        assert duns["id_value"] == "123456789"
+
+    def test_bik_extraction(self):
+        remarks = "BIK 044525411 (RU);"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        bik = next(i for i in result if i["id_type"] == "BIK")
+        assert bik["id_value"] == "044525411"
+
+    def test_phone_number_extraction(self):
+        remarks = "Phone Number +7-495-1234567;"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        phone = next(i for i in result if i["id_type"] == "Phone Number")
+        assert phone["id_value"] == "+7-495-1234567"
+
+    def test_license_extraction(self):
+        remarks = "License LIC-001 (Syria);"
+        result = _parse_identifiers(remarks)
+        assert len(result) >= 1
+        lic = next(i for i in result if i["id_type"] == "License")
+        assert lic["id_value"] == "LIC-001"
+        assert lic["country"] == "Syria"
+
 
 # ── _normalize_entity_type ──────────────────────────────────────────────────
 
@@ -362,3 +441,112 @@ class TestBuildEntityDict:
         row = self._make_sdn_row(program=None)
         result = _build_entity_dict(row, [], [], None, now)
         assert result["programs"] is None
+
+    def test_country_of_registration_extracted(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(
+            remarks="Nationality of Registration Russia; Tax ID No. 1234 (Russia)"
+        )
+        result = _build_entity_dict(row, [], [], None, now)
+        assert result["country_of_registration"] == "Russia"
+
+    def test_country_of_registration_none_for_individual(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(
+            sdn_type="individual",
+            remarks="Nationality of Registration Russia",
+        )
+        result = _build_entity_dict(row, [], [], None, now)
+        assert result["country_of_registration"] is None
+
+    def test_country_of_registration_none_when_absent(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(remarks="some other remark")
+        result = _build_entity_dict(row, [], [], None, now)
+        assert result["country_of_registration"] is None
+
+    def test_inline_aliases_merged_with_alt_csv(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(remarks="a.k.a. 'HYDRA'; a.k.a. 'SHADOW'")
+        alt_csv_aliases = [
+            {
+                "ent_num": "12345",
+                "alt_num": "1",
+                "alt_type": "aka",
+                "alt_name": "Alias One",
+                "alt_remarks": None,
+            }
+        ]
+        result = _build_entity_dict(row, [], alt_csv_aliases, None, now)
+        alias_names = [a["alias_name"] for a in result["aliases"]]
+        assert "Alias One" in alias_names
+        assert "HYDRA" in alias_names
+        assert "SHADOW" in alias_names
+        assert len(result["aliases"]) == 3
+
+    def test_inline_aliases_deduplicated_against_alt_csv(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(remarks="a.k.a. 'Alias One'; a.k.a. 'HYDRA'")
+        alt_csv_aliases = [
+            {
+                "ent_num": "12345",
+                "alt_num": "1",
+                "alt_type": "aka",
+                "alt_name": "Alias One",
+                "alt_remarks": None,
+            }
+        ]
+        result = _build_entity_dict(row, [], alt_csv_aliases, None, now)
+        alias_names = [a["alias_name"] for a in result["aliases"]]
+        # "Alias One" should appear only once (from alt.csv), "HYDRA" added from inline
+        assert alias_names.count("Alias One") == 1
+        assert "HYDRA" in alias_names
+        assert len(result["aliases"]) == 2
+
+    def test_inline_aliases_case_insensitive_dedup(self):
+        now = datetime(2026, 5, 15, tzinfo=UTC)
+        row = self._make_sdn_row(remarks="a.k.a. 'alias one'")
+        alt_csv_aliases = [
+            {
+                "ent_num": "12345",
+                "alt_num": "1",
+                "alt_type": "aka",
+                "alt_name": "Alias One",
+                "alt_remarks": None,
+            }
+        ]
+        result = _build_entity_dict(row, [], alt_csv_aliases, None, now)
+        # Case-insensitive dedup: "alias one" matches "Alias One"
+        assert len(result["aliases"]) == 1
+
+
+# ── _parse_inline_aliases ──────────────────────────────────────────────────
+
+
+class TestParseInlineAliases:
+    def test_single_aka(self):
+        result = _parse_inline_aliases("a.k.a. 'HYDRA'")
+        assert len(result) == 1
+        assert result[0]["alias_name"] == "HYDRA"
+        assert result[0]["alias_type"] == "aka"
+        assert result[0]["is_primary"] is False
+
+    def test_fka_and_aka(self):
+        result = _parse_inline_aliases("f.k.a. 'OLD NAME'; a.k.a. 'NEW NAME'")
+        assert len(result) == 2
+        fka = next(a for a in result if a["alias_type"] == "fka")
+        aka = next(a for a in result if a["alias_type"] == "aka")
+        assert fka["alias_name"] == "OLD NAME"
+        assert aka["alias_name"] == "NEW NAME"
+
+    def test_empty_remarks(self):
+        assert _parse_inline_aliases("") == []
+
+    def test_no_aliases_in_remarks(self):
+        assert _parse_inline_aliases("DOB 1970; nationality Russia") == []
+
+    def test_multiple_akas(self):
+        result = _parse_inline_aliases("a.k.a. 'NAME1'; a.k.a. 'NAME2'; a.k.a. 'NAME3'")
+        assert len(result) == 3
+        names = [a["alias_name"] for a in result]
+        assert names == ["NAME1", "NAME2", "NAME3"]

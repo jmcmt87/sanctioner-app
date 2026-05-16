@@ -115,6 +115,7 @@ async def ingest_ofac_nonsdn(
 
         if records_skipped > 0:
             status = "completed_with_errors"
+            error_message = f"{records_skipped} record(s) skipped during parsing"
 
     except Exception as e:
         status = "failed"
