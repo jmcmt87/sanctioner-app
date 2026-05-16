@@ -1,5 +1,74 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-16 — Session 10: Data Quality Review, Parser Fixes, Re-Ingestion, Testing
+
+### Completed: Full data quality cycle — audit → fix → re-ingest → verify → test
+
+**Data Quality Review Infrastructure**
+- Created `.claude/agents/data-quality-reviewer.md` — custom subagent definition for database-level data quality auditing via MCP SQL tools
+- Created `.claude/skills/data-quality-review/SKILL.md` — skill defining DQR report format, test entities, and quality metrics
+- Created `.claude/agent-memory/data-quality-reviewer/` — 5 memory files: baselines for OFAC SDN, OFAC Non-SDN, EU Consolidated; parser gap analysis; index
+- Ran full data quality review across all 6 dimensions (OFAC SDN, OFAC Non-SDN, EU Consolidated, encoding integrity, ingestion health, referential integrity)
+- DQR reports saved to `.tmp/` (7 files: dqr-index.md + 6 dimension reports)
+
+**EU Sanctions Parser Fixes**
+- Fixed legal_basis regex: `\d{4}` → `\d+` — was dropping 46.8% of EU records' legal_basis (regulations with short-year format like `2020/716` or `36/2011`)
+- Added Solar Hijri calendar date guard: `year < 1900` skip in both full-date and component-date branches — prevents non-Gregorian dates (e.g., SH year 1340) from being stored
+
+**OFAC SDN Parser Enhancements**
+- Added 13 new identifier patterns: C.U.R.P., R.F.C., USCC, SWIFT/BIC, Trade License, D.N.I., D-U-N-S, Enterprise Number, Driver's License, BIK, Phone Number, License
+- Added Digital Currency Address extraction with special capture group handling
+- Added inline a.k.a./f.k.a. alias extraction from remarks with case-insensitive dedup against alt.csv aliases
+- Added `country_of_registration` extraction from "Nationality of Registration" in remarks for entity-type records
+- Added `error_message` population when `records_skipped > 0` (both SDN and Non-SDN)
+
+**Entity Relationship Extraction (NEW module)**
+- Created `ingestion/pipeline/relationships.py` — extracts "Linked To:" references from OFAC remarks
+- Regex-based extraction with case-insensitive resolution against primary_name and aliases
+- Idempotent: deletes existing `ofac_remarks` relationships before re-creating
+- ON CONFLICT DO NOTHING for the unique constraint, self-reference skip
+- Integrated into `runner.py` — called after all source ingestion completes
+
+**Upsert Module Enhancements**
+- Added alias deduplication in upsert: set-based (alias_name.lower(), alias_type) dedup before insert
+- Added EntityRelationship cleanup: deletes from_entity relationships before re-inserting child records
+
+**Re-Ingestion Results**
+- OFAC SDN: 18,959 records updated (7m 19s)
+- OFAC Non-SDN: 442 records updated (11s)
+- EU Consolidated: 5,996 records updated (2m 23s)
+- Entity Relationships: 7,982 resolved out of 8,890 references (89.8% resolution rate)
+- 908 unresolved — mostly company names truncated by the period-terminated regex (e.g., "AGRICOLA BOREAL S" instead of "AGRICOLA BOREAL S.A. DE C.V.")
+
+**Data Quality Verification**
+- EU legal_basis coverage: **99.7%** (was ~53%)
+- Entity relationships: **7,982** (was 0)
+- Entity identifiers: 18,395
+- Entity aliases: 50,031
+- Vessels: 1,480
+
+**Test Suite (195 total, all passing)**
+- `test_eu_sanctions_parsing.py` — 57 tests (added: Solar Hijri skip, short-year regulation)
+- `test_ofac_sdn_parsing.py` — 73 tests (added: 10 identifier types, 5 inline alias, 3 country_of_registration, 3 alias dedup)
+- `test_relationships.py` — 19 tests (NEW: regex, extraction, alias dedup)
+- `test_hashing.py` — 12 tests
+- `test_ofac_nonsdn.py` — 20 tests (NEW: source config, CSV parsing, comment aggregation, address/alias indexing)
+- `test_runner.py` — 13 tests (NEW: source registration, file patterns, hash skip, relationship integration)
+- `test_health.py` — 2 tests (backend)
+
+**CLAUDE.md Condensed**
+- Removed redundant full project structure tree (503 lines deleted, 114 added)
+- Replaced with concise "Project Layout" section pointing to key locations
+- All essential information preserved in more scannable format
+
+### Blockers / Notes
+- Relationship regex truncation: entity names ending with "S.A.", "C.A.", "CO., LTD." get truncated by the period-terminated regex `[^;.]+?`. Known limitation — 908 unresolved references. Fixable with a lookahead for common suffixes in a follow-up.
+- The `completed_with_errors` status on OFAC SDN/Non-SDN is expected — 1 record skipped per source during parsing.
+
+### Next step
+- Continue with Phase 1.3 tasks: embedding model setup (1.3.1), PDF extraction (1.3.2), text chunking (1.3.3), enforcement PDF ingestion (1.3.4), OFAC guidance ingestion (1.3.5)
+- Before starting 1.3, consider improving the relationship regex to handle "S.A.", "CO., LTD." suffixes (would recover ~200+ of the 908 unresolved references)
+
 ## 2026-05-16 — Session 9: PostgreSQL MCP Server Setup
 
 ### Completed: MCP server for read-only PostgreSQL access
