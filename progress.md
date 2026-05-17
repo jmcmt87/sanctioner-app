@@ -1,5 +1,32 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 17: Workspace Fix (uv run from repo root)
+
+### Completed: Verified agent bug report, fixed confirmed issue, dismissed false positive
+
+**Bug 1 — `uv run` from repo root silently uses system Python (CONFIRMED + FIXED)**
+- Root cause: no `pyproject.toml` at repo root, so uv fell back to bare system Python
+- Fix: created workspace `pyproject.toml` at repo root with `[tool.uv.workspace] members = ["backend", "ingestion"]`
+- Updated `ingestion/pyproject.toml` to use `{ workspace = true }` for the backend dependency (required by uv workspace semantics)
+- Unified lockfile now lives at repo root (`uv.lock`); deleted old per-package `uv.lock` files
+- Deleted stale per-package `.venv` directories; single workspace `.venv` at root
+
+**Bug 2 — langchain-core 1.4 / langchain-text-splitters incompatibility (NOT CONFIRMED)**
+- Agent claimed `from langchain_core.documents import BaseDocumentTransformer` fails with langchain-core 1.4.0
+- Tested: import succeeds, all 285 ingestion tests pass — the bug does not reproduce
+- No fix applied
+
+### Errors/Blockers Encountered
+- `uv lock` initially failed because ingestion's `tool.uv.sources` used `{ path = "../backend", editable = true }` — workspace members must use `{ workspace = true }` instead
+- `uv run --package sanctions-screening-backend pytest` from the repo root collects all 285 tests (ingestion included) because pytest config resolution defaults to CWD — tests should still be run from within the specific package directory (`cd backend && uv run pytest`)
+
+### Next Steps
+1. Phase 1 checkpoint is fully complete — begin Phase 2 (Agent Core & Retrieval)
+2. First Phase 2 task: **2.1.1** LLM client abstraction
+3. Then: **2.2.1** LangGraph state schema
+
+---
+
 ## 2026-05-17 — Session 16: Automated Data Acquisition Scripts (Task 1.2.5)
 
 ### Completed: Automated download scripts for all structured sanctions list sources

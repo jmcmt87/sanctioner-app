@@ -70,7 +70,7 @@ known-first-party = ["pipeline"]
 quote-style = "double"
 
 [tool.uv.sources]
-sanctions-screening-backend = { path = "../backend", editable = true }
+sanctions-screening-backend = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
