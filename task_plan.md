@@ -162,7 +162,7 @@
 - [x] Embedding model setup (1.3.1) — BAAI/bge-m3 wrapper with lazy loading in pipeline/embeddings.py
 - [x] PDF extraction pipeline (1.3.2) — PyMuPDF + Tesseract OCR fallback in pipeline/extraction.py
 - [x] Text chunking strategy (1.3.3) — RecursiveCharacterTextSplitter wrapper in pipeline/chunking/text_chunker.py
-- [x] 20 enforcement PDFs chunked, embedded, and searchable (1.3.4) — manifest + auto-download in pipeline/sources/enforcement.py
+- [x] 20 enforcement PDFs chunked, embedded, and searchable (1.3.4) — manifest + auto-download in pipeline/sources/enforcement.py. DQR-verified: all 20 docs have correct content, 285 chunks with metadata JSONB populated, OCR fallback for garbled-font PDFs.
 - [x] OFAC Compliance Framework + 50% Rule in vector store (1.3.5) — pipeline/sources/guidance.py
 
 ---

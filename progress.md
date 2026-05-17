@@ -1,5 +1,69 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 14: Enforcement Data Quality Fixes
+
+### Completed: Full DQR audit + fix all critical issues in enforcement corpus
+
+**Data Quality Review (via data-quality-reviewer agent)**
+- Audited all 207 enforcement chunks in PostgreSQL
+- Found: 9 of 20 PDFs contained wrong content (45% corpus contamination)
+- Found: `metadata` JSONB null on all chunks
+- Found: Non-breaking space encoding issues (Credit Suisse)
+- Found: OCR not triggering on garbled-font PDFs (UniCredit)
+
+**C1 — Fixed 8 wrong OFAC URLs + replaced 1 nonexistent document**
+- Researched and verified correct URLs for all 9 problematic documents
+- Replaced `deutsche_bank_2015` (nonexistent OFAC action) with `deutsche_bank_2020` (DBTCA settlement)
+- Apollo Aviation: OFAC website itself serves wrong PDF at media/13176 — switched to enforcement release at media/25941
+- All URLs verified reachable and returning `content-type: application/pdf`
+
+**C2 — Populated metadata JSONB on all enforcement chunks**
+- Added `_extract_enforcement_metadata()` — extracts penalty amounts, programs referenced, respondent entity
+- `store_document_chunks()` now accepts optional `metadata` dict parameter
+- All 285 chunks now have structured metadata
+
+**W2 — Text normalization in extraction.py**
+- Added `_normalize_text()` — replaces non-breaking spaces (U+00A0), smart quotes, Unicode dashes
+- Applied to all page text before cleaning
+- Credit Suisse extraction quality improved from 0.84 → 0.997
+
+**UniCredit garbled-text OCR fix**
+- Added per-page quality check: if `_calculate_quality(text) < 0.5`, fall back to OCR even if text length is sufficient
+- UniCredit (18-page PDF with custom font encoding) now OCRs 16 of 18 pages
+- Extraction quality jumped from 0.322 (was skipped) → 1.0 (35 chunks ingested)
+
+**Content validation (prevention)**
+- Added `_extract_entity_keyword()` — finds distinctive keyword from title, skipping generic suffixes (Inc, AG, LLC, etc.)
+- After extraction, checks if keyword appears in text; logs warning if not
+- Successfully caught Apollo Aviation mismatch during re-ingestion
+
+**PDF header validation**
+- Checks `%PDF-` magic bytes before extraction attempt
+- Automatically deletes and skips non-PDF files (prevents zhongxing-type HTML downloads)
+
+**Final ingestion result: 20/20 documents processed, 285 chunks, status=completed**
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Documents with correct content | 11/20 | 20/20 |
+| Total chunks | 207 | 285 |
+| Metadata populated | 0% | 100% |
+| Encoding issues | Credit Suisse (697 NBSP) | Fixed |
+| UniCredit | Skipped (quality 0.322) | 35 chunks (quality 1.0) |
+
+### Errors Encountered
+- `home.treasury.gov/system/files/126/` URLs redirect to OFAC homepage (3 URLs had to be replaced with `ofac.treasury.gov/media/` equivalents)
+- `www.treasury.gov/resource-center/sanctions/` URLs also redirect (old Treasury format deprecated)
+- Apollo Aviation `media/13176` confirmed serving wrong document (ASI settlement) — OFAC website error, used enforcement release instead
+- UniCredit PDF uses custom font encoding — native PyMuPDF extracts control characters; OCR fallback resolves it
+
+### Next Step
+- Phase 2 planning: Backend agent pipeline (LangGraph), retrieval layer (BM25 + semantic search), API endpoints
+- Consider benchmarking SDN ingestion time after the RETURNING id fix
+- Consider running DQR on Non-SDN (442 vs expected ~1,900 records)
+
+---
+
 ## 2026-05-17 — Session 13: Architecture Audit + Ingestion Improvements
 
 ### Completed: Audit-driven performance and async safety improvements

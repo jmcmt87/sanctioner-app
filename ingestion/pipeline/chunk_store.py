@@ -17,6 +17,7 @@ async def store_document_chunks(
     chunks: list[ChunkResult],
     embeddings: list[list[float]],
     source_document: str,
+    metadata: dict | None = None,
 ) -> int:
     """Store document chunks with embeddings, replacing any existing chunks for this document."""
     if len(chunks) != len(embeddings):
@@ -53,7 +54,7 @@ async def store_document_chunks(
                 published_date=meta.published_date,
                 ingestion_timestamp=now,
                 data_vintage=meta.data_vintage,
-                metadata_=None,
+                metadata_=metadata,
             )
         )
 

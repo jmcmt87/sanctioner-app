@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -16,6 +17,82 @@ from pipeline.models import IngestionResult
 
 logger = structlog.get_logger()
 
+PENALTY_PATTERN = re.compile(r"\$[\d,]+(?:\.\d{2})?")
+
+
+_GENERIC_SUFFIXES = {
+    "inc",
+    "inc.",
+    "llc",
+    "ag",
+    "sa",
+    "s.a.",
+    "plc",
+    "n.v.",
+    "corp",
+    "group",
+    "bank",
+    "ltd",
+}
+
+
+def _extract_entity_keyword(title: str) -> str | None:
+    """Extract a distinctive keyword from title for content validation."""
+    title_lower = title.lower()
+    for suffix in (" settlement agreement", " civil monetary penalty"):
+        if title_lower.endswith(suffix):
+            name = title[: -len(suffix)].strip()
+            break
+    else:
+        name = title
+
+    words = name.split()
+    for word in words:
+        clean = word.strip("()")
+        if clean.lower() not in _GENERIC_SUFFIXES and len(clean) > 2:
+            return clean
+    return words[0] if words else None
+
+
+def _extract_enforcement_metadata(text: str, title: str) -> dict:
+    """Extract structured metadata from enforcement document text."""
+    metadata: dict = {}
+    penalties = PENALTY_PATTERN.findall(text)
+    if penalties:
+        amounts = []
+        for p in penalties:
+            try:
+                amounts.append(float(p.replace("$", "").replace(",", "")))
+            except ValueError:
+                continue
+        if amounts:
+            metadata["max_penalty_amount"] = max(amounts)
+            max_amt = max(amounts)
+            metadata["penalty_amounts"] = [
+                p for p in penalties if float(p.replace("$", "").replace(",", "")) == max_amt
+            ][:1]
+
+    programs = set()
+    program_patterns = [
+        r"(?:UKRAINE|Ukraine)[- ](?:Related|EO\d+)",
+        r"(?:IRAN|Iran)[- ](?:TRA|ISA|Transactions)",
+        r"(?:CUBA|Cuba)[- ](?:Assets|Embargo)",
+        r"(?:SUDAN|Sudan)[- ](?:Sanctions)",
+        r"(?:SYRIA|Syria)[- ](?:Sanctions)",
+        r"(?:BURMA|Burma|Myanmar)",
+        r"Executive Order \d{5}",
+    ]
+    for pattern in program_patterns:
+        if re.search(pattern, text):
+            programs.add(re.search(pattern, text).group())
+    if programs:
+        metadata["programs_referenced"] = sorted(programs)
+
+    respondent = title.replace(" Settlement Agreement", "")
+    metadata["respondent_entity"] = respondent.replace(" Civil Monetary Penalty", "")
+    return metadata
+
+
 SOURCE_NAME = "enforcement"
 
 ENFORCEMENT_MANIFEST: dict[str, dict] = {
@@ -30,8 +107,8 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2015, 3, 12),
     },
     "unicredit_2019": {
-        "url": "https://ofac.treasury.gov/media/15896/download",
-        "title": "UniCredit Group Settlement Agreement",
+        "url": "https://ofac.treasury.gov/system/files/126/20190415_unicredit_bank_ag.pdf",
+        "title": "UniCredit Bank AG Settlement Agreement",
         "published_date": date(2019, 4, 15),
     },
     "ing_2012": {
@@ -45,7 +122,7 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2012, 12, 11),
     },
     "standard_chartered_2019": {
-        "url": "https://ofac.treasury.gov/media/15891/download",
+        "url": "https://ofac.treasury.gov/system/files/126/scb_settlement.pdf",
         "title": "Standard Chartered Bank Settlement Agreement",
         "published_date": date(2019, 4, 9),
     },
@@ -54,13 +131,13 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "title": "Clearstream Banking SA Settlement Agreement",
         "published_date": date(2014, 1, 23),
     },
-    "deutsche_bank_2015": {
-        "url": "https://ofac.treasury.gov/media/11631/download",
-        "title": "Deutsche Bank AG Settlement Agreement",
-        "published_date": date(2015, 11, 4),
+    "deutsche_bank_2020": {
+        "url": "https://ofac.treasury.gov/media/47956/download",
+        "title": "Deutsche Bank Trust Company Americas Settlement Agreement",
+        "published_date": date(2020, 9, 9),
     },
     "societe_generale_2018": {
-        "url": "https://ofac.treasury.gov/media/15041/download",
+        "url": "https://ofac.treasury.gov/media/13931/download",
         "title": "Societe Generale SA Settlement Agreement",
         "published_date": date(2018, 11, 19),
     },
@@ -85,8 +162,8 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2015, 3, 25),
     },
     "zhongxing_2017": {
-        "url": "https://home.treasury.gov/system/files/126/20170307_zte_settlement.pdf",
-        "title": "Zhongxing Telecommunications Settlement Agreement",
+        "url": "https://ofac.treasury.gov/media/11136/download",
+        "title": "Zhongxing Telecommunications (ZTE) Settlement Agreement",
         "published_date": date(2017, 3, 7),
     },
     "epsilon_electronics_2018": {
@@ -95,8 +172,8 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2018, 9, 13),
     },
     "exxonmobil_2017": {
-        "url": "https://ofac.treasury.gov/media/12956/download",
-        "title": "ExxonMobil Settlement Agreement",
+        "url": "https://ofac.treasury.gov/media/11111/download",
+        "title": "ExxonMobil Civil Monetary Penalty",
         "published_date": date(2017, 7, 20),
     },
     "general_electric_2019": {
@@ -110,13 +187,13 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2020, 12, 30),
     },
     "bittrex_2022": {
-        "url": "https://ofac.treasury.gov/media/932351/download",
+        "url": "https://ofac.treasury.gov/media/928746/download",
         "title": "Bittrex Inc. Settlement Agreement",
         "published_date": date(2022, 10, 11),
     },
     "apollo_aviation_2019": {
-        "url": "https://ofac.treasury.gov/media/13176/download",
-        "title": "Apollo Aviation Group Settlement Agreement",
+        "url": "https://ofac.treasury.gov/media/25941/download",
+        "title": "Apollo Aviation Group Enforcement Information",
         "published_date": date(2019, 11, 7),
     },
 }
@@ -156,6 +233,14 @@ async def ingest_enforcement_pdfs(
                 await download_file(entry["url"], pdf_path)
                 pdf_log.info("pdf_downloaded")
 
+            # Validate downloaded file is actually a PDF
+            header = pdf_path.read_bytes()[:5]
+            if header != b"%PDF-":
+                pdf_log.warning("not_a_pdf", header=header[:20].hex())
+                pdf_path.unlink()
+                records_skipped += 1
+                continue
+
             # Extract text
             extracted = await extract_pdf(pdf_path)
 
@@ -166,6 +251,16 @@ async def ingest_enforcement_pdfs(
                 )
                 records_skipped += 1
                 continue
+
+            # Content validation: check the extracted text mentions the expected entity
+            keyword = _extract_entity_keyword(entry["title"])
+            if keyword and keyword.lower() not in extracted.text.lower():
+                pdf_log.warning(
+                    "content_mismatch",
+                    expected_keyword=keyword,
+                    title=entry["title"],
+                    text_preview=extracted.text[:200],
+                )
 
             # Chunk
             data_vintage = datetime.now(UTC)
@@ -187,9 +282,14 @@ async def ingest_enforcement_pdfs(
             # Embed
             embeddings = embedder.embed_batch([c.content for c in chunks])
 
+            # Extract structured metadata
+            doc_metadata = _extract_enforcement_metadata(extracted.text, entry["title"])
+            doc_metadata["extraction_quality"] = round(extracted.extraction_quality, 3)
+            doc_metadata["page_count"] = extracted.page_count
+
             # Store
             stored = await store_document_chunks(
-                session, chunks, embeddings, f"enforcement/{slug}.pdf"
+                session, chunks, embeddings, f"enforcement/{slug}.pdf", metadata=doc_metadata
             )
 
             records_added += stored

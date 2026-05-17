@@ -24,6 +24,7 @@ logger = structlog.get_logger()
 PRINTABLE_CHARS = set(string.ascii_letters + string.digits + string.punctuation + string.whitespace)
 
 MIN_TEXT_LENGTH_FOR_NATIVE = 100
+MIN_PAGE_QUALITY_FOR_NATIVE = 0.5
 
 
 class ExtractedDocument(BaseModel):
@@ -51,7 +52,14 @@ def _extract_pdf_sync(path: Path) -> ExtractedDocument:
         page = doc[page_num]
         text = page.get_text("text")
 
-        if len(text.strip()) < MIN_TEXT_LENGTH_FOR_NATIVE and _page_has_content(page):
+        needs_ocr = False
+        if len(text.strip()) < MIN_TEXT_LENGTH_FOR_NATIVE:
+            needs_ocr = _page_has_content(page)
+        elif _calculate_quality(text) < MIN_PAGE_QUALITY_FOR_NATIVE:
+            needs_ocr = True
+            log.info("garbled_text_detected", page=page_num)
+
+        if needs_ocr:
             log.info("ocr_fallback", page=page_num)
             text = _ocr_page(page)
             ocr_pages.append(page_num)
@@ -93,8 +101,23 @@ def _ocr_page(page: fitz.Page) -> str:
     return pytesseract.image_to_string(image)
 
 
+def _normalize_text(text: str) -> str:
+    """Normalize common PDF extraction artifacts."""
+    text = text.replace(" ", " ")
+    text = text.replace("‑", "-")
+    text = text.replace("–", "-")
+    text = text.replace("—", "--")
+    text = text.replace("‘", "'")
+    text = text.replace("’", "'")
+    text = text.replace("“", '"')
+    text = text.replace("”", '"')
+    return text
+
+
 def _clean_page_text(text: str, page_num: int, total_pages: int) -> str:
     """Remove PDF artifacts: standalone page numbers and excessive whitespace."""
+    text = _normalize_text(text)
+
     lines = text.split("\n")
     cleaned_lines: list[str] = []
 

@@ -2,3 +2,4 @@
 - [OFAC Non-SDN Baseline](ofac-nonsdn-baseline.md) — 442 records, field coverage benchmarks, and known parser gaps from 2026-05-16 review
 - [OFAC Parser Gaps](ofac-parser-gaps.md) — Shared parser limitations affecting both SDN and Non-SDN sources (inline aliases, country_of_registration, Driver's License)
 - [EU Consolidated Baseline 2026-05-16](eu-consolidated-baseline-2026-05-16.md) — 5,996 records, CRITICAL legal_basis regex bug (46.8% missing), field coverage benchmarks
+- [Enforcement Baseline 2026-05-17](enforcement-baseline-2026-05-17.md) — 207 chunks/20 PDFs, CRITICAL: 9/20 PDFs have wrong content from stale OFAC URLs, OCR artifacts in 5 docs
