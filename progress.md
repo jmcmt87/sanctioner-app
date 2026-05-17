@@ -1,5 +1,58 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 15: Architecture Audit + Fix All Findings
+
+### Completed: Full-scope architecture audit, 4 audit fixes, task plan update
+
+**Architecture Audit (A- grade, Conditional Pass)**
+- Ran architecture-auditor agent against `backend/app/`, `ingestion/pipeline/`, `backend/alembic/`, `backend/tests/`
+- Report saved to `.tmp/audit_report_2026-05-17.md`
+- 1 critical, 3 important findings — all addressed this session
+
+**C1 — Rebuilt corrupted ingestion `.venv/`**
+- Broken SQLAlchemy, numpy, langchain_core caused 10/12 test files to fail at collection (only 29 of 274 tests collectable)
+- Fix: `rm -rf .venv && uv sync --extra dev`
+- Result: 274/274 tests now collect and pass
+- Third venv corruption in project history — all caused by mixing `uv sync` with manual interventions
+
+**I1 — Created `backend/Dockerfile`**
+- Follows constitution template: `python:3.13-slim`, uv-based, `--frozen --no-dev` install
+- Was listed in CLAUDE.md project structure but never created
+
+**I2 — Created `backend/app/dependencies.py`**
+- FastAPI dependency injection module: re-exports `get_db` from session factory
+- Ready for repository-level dependencies when Phase 2 routers are built
+
+**I4 — Investigated Non-SDN record count (442 vs ~1,900 expected)**
+- Deployed data-quality-reviewer agent in background
+- Root cause: truncated source file (`cons_prim.csv` has only 442 data lines), not a parser bug
+- Parser ingests 100% of available records — confirmed via DB counts and ingestion log
+- Fix: re-download full file from OFAC; longer term, build automated acquisition scripts
+
+**Enforcement test fix (bonus)**
+- `test_completed_status_on_success` and `test_download_failure_skips_pdf_but_continues` were failing because the mock `download_file` didn't create PDF files on disk
+- Added `_write_fake_pdf()` helper + wired as `side_effect` on the download mock
+- All 21 enforcement tests pass, ruff lint clean
+
+**Task plan update**
+- Added **task 1.2.5 — Automated data acquisition scripts** [ESSENTIAL] to Phase 1.2
+- Covers: downloading SDN/Non-SDN/EU files from government websites, SHA-256 hash-based change detection at file level, following enforcement.py/guidance.py download patterns
+- Old 1.2.5 (S3 integration) renumbered to 1.2.6
+- Task 6.3.1 (automated daily refresh) now explicitly depends on 1.2.5
+- Added Phase 1 checkpoint item for acquisition scripts
+- Task count updated: ~52 → ~53 essential tasks
+
+### Errors Encountered
+- Ingestion `.venv/` corruption (third occurrence) — same root cause as previous incidents
+- Enforcement test mock fixture was incomplete since original implementation — never caught because the tests were uncollectable due to venv corruption
+
+### Next Step
+- **Build task 1.2.5**: Automated data acquisition scripts for SDN, Non-SDN, and EU list downloads
+- Re-download full Non-SDN `cons_prim.csv` and re-run ingestion to get the expected ~1,900 records
+- Then begin Phase 2: LLM client abstraction (2.1.1), LangGraph state schema (2.2.1)
+
+---
+
 ## 2026-05-17 — Session 14: Enforcement Data Quality Fixes
 
 ### Completed: Full DQR audit + fix all critical issues in enforcement corpus

@@ -98,6 +98,11 @@ _SMALL_MANIFEST = {
 }
 
 
+def _write_fake_pdf(dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"%PDF-1.4 fake content")
+
+
 # ── Integration tests ──────────────────────────────────────────────────────
 
 
@@ -128,6 +133,11 @@ class TestIngestEnforcementPdfs:
                 new_callable=AsyncMock,
             ) as mock_store,
         ):
+
+            async def _fake_download(url: str, dest: Path) -> None:
+                _write_fake_pdf(dest)
+
+            mock_download.side_effect = _fake_download
             mock_extract.return_value = _make_extracted_document(quality=0.95)
 
             mock_embedder = MagicMock()
@@ -230,6 +240,7 @@ class TestIngestEnforcementPdfs:
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("download failed")
+            _write_fake_pdf(dest)
 
         mock_deps["download"].side_effect = _fail_first
 

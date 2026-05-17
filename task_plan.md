@@ -97,7 +97,21 @@
 - **Depends on**: 1.2.1, 1.2.2
 - **Acceptance**: Re-running ingestion on unchanged data produces zero changes. Modifying one record in source correctly detects the delta.
 
-**1.2.5** S3 integration for raw document storage **[ESSENTIAL]**
+**1.2.5** Automated data acquisition scripts **[ESSENTIAL]**
+- Build download scripts that fetch fresh source files from government websites:
+  - OFAC SDN: `sdn.csv`, `add.csv`, `alt.csv`, `sdn_comments.csv` from `treasury.gov/ofac/downloads/`
+  - OFAC Non-SDN: `cons_prim.csv`, `cons_add.csv`, `cons_alt.csv`, `cons_comments.csv` from `treasury.gov/ofac/downloads/consolidated/`
+  - EU Consolidated Financial Sanctions List XML from European Commission
+- Implement hash-based change detection at the file level (SHA-256 of downloaded file vs. stored hash) to skip re-ingestion when source hasn't changed
+- Store downloaded files in `ingestion/data/{source}/` with timestamped copies for audit trail
+- Log download results (new file, unchanged, download error) to structlog
+- Follow the pattern already established by `enforcement.py` and `guidance.py` (which have built-in download logic)
+- **Effort**: 1.5–2 days
+- **Depends on**: 1.2.1, 1.2.2, 1.2.3
+- **Gotchas**: The current SDN/Non-SDN/EU parsers rely on manually-placed files. The Non-SDN source file was found to be truncated (442 vs ~1,900 expected records) because it was placed manually. Automated downloads prevent this class of error. OFAC occasionally changes download URLs — the scripts should log clear errors when a URL returns non-200.
+- **Acceptance**: Running `uv run python scripts/download_sources.py` fetches all structured list files from source websites. Hash comparison correctly detects unchanged files. Re-downloading unchanged files is a no-op. Download failures are logged with actionable error messages.
+
+**1.2.6** S3 integration for raw document storage **[ESSENTIAL]**
 - Set up S3 bucket with prefix-based organization: `raw/ofac/sdn/`, `raw/eu/consolidated/`, `raw/enforcement/`, `raw/regulations/`, etc.
 - Upload script to push source files to S3
 - Download helper to fetch latest version from S3 before parsing
@@ -157,6 +171,7 @@
 - [x] Vessel records extracted and queryable by IMO number, with vessel_name and build_year
 - [x] Entity relationships populated where extractable from source data
 - [x] Incremental update logic working for sanctions lists
+- [ ] Automated acquisition scripts download SDN, Non-SDN, and EU list files from source websites with hash-based change detection (1.2.5)
 - [x] S3 bucket organized with raw source files
 - [x] Ingestion log tracking all runs
 - [x] Embedding model setup (1.3.1) — BAAI/bge-m3 wrapper with lazy loading in pipeline/embeddings.py
@@ -723,7 +738,7 @@ Fine-tuning is NOT a default step. It is triggered only if prompt engineering + 
 - Sends alert (email or log) on ingestion failure
 - Sends alert if source data hasn't changed in >3 days (possible fetch failure)
 - **Effort**: 1 day
-- **Depends on**: 6.1.2, Phase 1 incremental logic
+- **Depends on**: 6.1.2, 1.2.5 (acquisition scripts), Phase 1 incremental logic
 - **Acceptance**: SDN + EU list data updates automatically. Ingestion log reflects daily runs.
 
 ### 6.4 Portfolio Documentation
@@ -763,7 +778,7 @@ Fine-tuning is NOT a default step. It is triggered only if prompt engineering + 
 
 | Priority | Count | Notes |
 |---|---|---|
-| **ESSENTIAL** | ~52 tasks | Must complete for a functional, demo-ready PoC |
+| **ESSENTIAL** | ~53 tasks | Must complete for a functional, demo-ready PoC |
 | **RECOMMENDED** | ~7 tasks | Add quality, cut if time pressure (includes citation sidebar, agent trace panel, fine-tuning) |
 | **DOMAIN** | ~13 touchpoints require expert input | Schedule these early — domain expert time is the bottleneck |
 
