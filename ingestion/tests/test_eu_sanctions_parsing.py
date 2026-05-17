@@ -15,6 +15,7 @@ from lxml import etree
 from pipeline.sources.eu_sanctions import (
     _attr,
     _build_entity_dict,
+    _derive_country_of_registration,
     _extract_addresses,
     _extract_birthdate,
     _extract_citizenships,
@@ -384,6 +385,8 @@ class TestExtractRegulations:
         legal_basis, programmes, earliest = _extract_regulations(entity)
         assert "Reg. 269/2014" in legal_basis
         assert "UKR" in programmes
+        # Parent regulations enriched from programme mapping
+        assert "Reg. 833/2014" in legal_basis
 
     def test_multiple_regulations(self):
         entity = _el(
@@ -396,7 +399,7 @@ class TestExtractRegulations:
         legal_basis, programmes, _ = _extract_regulations(entity)
         assert "Reg. 269/2014" in legal_basis
         assert "Reg. 833/2014" in legal_basis
-        assert len(programmes) == 2
+        assert set(programmes) == {"UKR", "RUS"}
 
     def test_deduplicates_regulations(self):
         entity = _el(
@@ -443,6 +446,83 @@ class TestExtractRegulations:
         assert earliest is None
 
 
+# ── _derive_country_of_registration ──────────────────────────────────────────
+
+
+class TestDeriveCountryOfRegistration:
+    def test_from_registration_identifier(self):
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el(
+                    "identification",
+                    {
+                        "number": "1027700198635",
+                        "identificationTypeCode": "registration_number",
+                        "countryIso2Code": "RU",
+                        "countryDescription": "RUSSIAN FEDERATION",
+                    },
+                ),
+            ],
+        )
+        assert _derive_country_of_registration(entity) == "RU"
+
+    def test_from_fiscal_code_identifier(self):
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el(
+                    "identification",
+                    {
+                        "number": "7736050003",
+                        "identificationTypeCode": "fiscalcode",
+                        "countryIso2Code": "RU",
+                    },
+                ),
+            ],
+        )
+        assert _derive_country_of_registration(entity) == "RU"
+
+    def test_falls_back_to_address_country(self):
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el(
+                    "identification",
+                    {
+                        "number": "12345",
+                        "identificationTypeCode": "passport",
+                        "countryIso2Code": "RU",
+                    },
+                ),
+                _el("address", {"countryIso2Code": "CY", "city": "Nicosia"}),
+            ],
+        )
+        assert _derive_country_of_registration(entity) == "CY"
+
+    def test_skips_unknown_country(self):
+        entity = _el(
+            "sanctionEntity",
+            children=[
+                _el(
+                    "identification",
+                    {
+                        "number": "12345",
+                        "identificationTypeCode": "registration_number",
+                        "countryIso2Code": "00",
+                        "countryDescription": "UNKNOWN",
+                    },
+                ),
+                _el("address", {"countryIso2Code": "DE", "city": "Berlin"}),
+            ],
+        )
+        assert _derive_country_of_registration(entity) == "DE"
+
+    def test_returns_none_when_no_data(self):
+        entity = _el("sanctionEntity")
+        assert _derive_country_of_registration(entity) is None
+
+
 # ── _extract_remarks ────────────────────────────────────────────────────────
 
 
@@ -455,12 +535,12 @@ class TestExtractRemarks:
                 _el("remark", text="Second remark."),
             ],
         )
-        result = _extract_remarks(entity)
+        result = _extract_remarks(entity, [])
         assert result == "First remark.; Second remark."
 
     def test_none_when_no_remarks(self):
         entity = _el("sanctionEntity")
-        assert _extract_remarks(entity) is None
+        assert _extract_remarks(entity, []) is None
 
     def test_skips_empty_remarks(self):
         entity = _el(
@@ -470,8 +550,34 @@ class TestExtractRemarks:
                 _el("remark", text="Valid remark."),
             ],
         )
-        result = _extract_remarks(entity)
+        result = _extract_remarks(entity, [])
         assert result == "Valid remark."
+
+    def test_includes_substantive_function_descriptions(self):
+        entity = _el("sanctionEntity")
+        aliases = [
+            {
+                "function": "This is a long description that exceeds fifty characters and provides operational context about the entity",
+            },
+            {"function": "Short"},
+            {"function": None},
+        ]
+        result = _extract_remarks(entity, aliases)
+        assert "operational context" in result
+
+    def test_combines_remarks_and_function(self):
+        entity = _el(
+            "sanctionEntity",
+            children=[_el("remark", text="Listed under UNSC 1483.")],
+        )
+        aliases = [
+            {
+                "function": "This entity manages oil tankers transporting crude oil originating in Russia for export purposes",
+            }
+        ]
+        result = _extract_remarks(entity, aliases)
+        assert "UNSC 1483" in result
+        assert "oil tankers" in result
 
 
 # ── _build_entity_dict (EU) ────────────────────────────────────────────────

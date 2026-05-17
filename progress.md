@@ -1,5 +1,43 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 18: EU Data Quality Fixes (Parser Enrichment)
+
+### Completed: Applied 3 fixes from EU data quality report, dismissed 1 false positive
+
+**Fix 1 (DOB timezone shift) — FALSE POSITIVE, skipped**
+- Report claimed all 3,718 DOBs were shifted +1 day by timezone conversion
+- Verified against source XML: stored dates match the EU XML exactly (KALININ "1973-03-07" = DB "1973-03-07")
+- The apparent shift was a JSON serialization artifact from the MCP client converting PostgreSQL `date` values through JavaScript's timezone-aware Date constructor
+- No data correction needed
+
+**Fix 2 (Legal basis parent regulation mapping) — Applied**
+- Added `PROGRAMME_TO_PARENT_REGULATION` mapping (20 programme codes) to `eu_sanctions.py`
+- `_extract_regulations()` now enriches `legal_basis` with parent framework regulations
+- Result: `Reg. 269/2014` appears on 2,791 records, `Reg. 833/2014` on 2,800 records (was 0 for both)
+- Analysts can now query "entities under Reg. 269/2014" and get results
+
+**Fix 3 (country_of_registration derivation) — Applied**
+- Added `_derive_country_of_registration()` — checks registration-type identifiers first, falls back to address country
+- Coverage went from 0% → 87.4% (1,386 of 1,586 entities)
+- Gazprom entities correctly show "RU"
+
+**Fix 4 (function field → remarks) — Applied**
+- `_extract_remarks()` now includes substantive function descriptions (>50 chars) from nameAlias elements
+- 1,728 records now have populated remarks (was 0 for EU records)
+- Entity descriptions provide operational context (e.g., "manages tankers that transport crude oil")
+
+**Tests: 292 passing** (was 287 — added 5 new tests for country_of_registration + remarks)
+
+### Errors/Blockers Encountered
+- None. All changes applied cleanly, tests pass, re-ingestion completed in ~2 minutes.
+
+### Next Steps
+1. Phase 1 checkpoint is fully complete — begin Phase 2 (Agent Core & Retrieval)
+2. First Phase 2 task: **2.1.1** LLM client abstraction
+3. Then: **2.2.1** LangGraph state schema
+
+---
+
 ## 2026-05-17 — Session 17: Workspace Fix (uv run from repo root)
 
 ### Completed: Verified agent bug report, fixed confirmed issue, dismissed false positive

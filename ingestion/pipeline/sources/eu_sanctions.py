@@ -29,6 +29,32 @@ NS = {"ns": "http://eu.europa.ec/fpi/fsd/export"}
 # Regex to extract regulation number from numberTitle like "269/2014 (OJ L78)"
 REGULATION_NUMBER_RE = re.compile(r"(\d+/\d+)")
 
+# Programme code to parent regulation mapping.
+# The EU XML only stores implementing/amending regulation numbers. This mapping
+# enriches legal_basis with the parent framework regulation that analysts reference.
+PROGRAMME_TO_PARENT_REGULATION: dict[str, list[str]] = {
+    "UKR": ["Reg. 269/2014", "Reg. 833/2014"],
+    "IRN": ["Reg. 267/2012"],
+    "SYR": ["Reg. 36/2012"],
+    "BLR": ["Reg. 765/2006"],
+    "PRK": ["Reg. 329/2007"],
+    "AFG": ["Reg. 753/2011"],
+    "MMR": ["Reg. 401/2013"],
+    "TAQA": ["Reg. 2580/2001"],
+    "IRQ": ["Reg. 1210/2003"],
+    "LBY": ["Reg. 204/2011"],
+    "COD": ["Reg. 1183/2005"],
+    "RUS": ["Reg. 269/2014"],
+    "RUSDA": ["Reg. 833/2014"],
+    "TERR": ["Reg. 2580/2001"],
+    "VEN": ["Reg. 2017/2063"],
+    "CHEM": ["Reg. 2018/1542"],
+    "CYB": ["Reg. 2019/796"],
+    "MDA": ["Reg. 2023/1713"],
+    "TUN": ["Reg. 101/2011"],
+    "HR": ["Reg. 2020/1998"],
+}
+
 
 def _attr(element: etree._Element, name: str) -> str | None:
     """Get an attribute value, returning None for empty strings."""
@@ -237,10 +263,49 @@ def _extract_identifications(entity_el: etree._Element) -> list[dict[str, str | 
     return identifiers
 
 
+_REGISTRATION_ID_TYPES = frozenset(
+    {
+        "registration_number",
+        "registrationnumber",
+        "reg. nb.",
+        "registration number",
+        "tax_id",
+        "fiscal code",
+        "fiscalcode",
+    }
+)
+
+
+def _derive_country_of_registration(entity_el: etree._Element) -> str | None:
+    """Derive entity's country of registration from identification or address elements.
+
+    Priority: registration-type identifiers with country > primary address country.
+    """
+    # Priority 1: Registration-type identifiers with a country
+    for ident in entity_el.findall("ns:identification", NS):
+        id_type_code = (_attr(ident, "identificationTypeCode") or "").lower()
+        id_type_desc = (_attr(ident, "identificationTypeDescription") or "").lower()
+        if id_type_code in _REGISTRATION_ID_TYPES or id_type_desc in _REGISTRATION_ID_TYPES:
+            country = _attr(ident, "countryIso2Code") or _attr(ident, "countryDescription")
+            if country and country.upper() != "UNKNOWN" and country != "00":
+                return country
+
+    # Priority 2: First address with a country
+    for addr in entity_el.findall("ns:address", NS):
+        country = _attr(addr, "countryIso2Code") or _attr(addr, "countryDescription")
+        if country and country.upper() != "UNKNOWN":
+            return country
+
+    return None
+
+
 def _extract_regulations(
     entity_el: etree._Element,
 ) -> tuple[list[str], list[str], date | None]:
     """Extract legal_basis, programmes, and earliest regulation publication date.
+
+    Enriches legal_basis with parent framework regulations derived from programme codes,
+    since the XML only contains implementing/amending regulation numbers.
 
     Returns:
         Tuple of (legal_basis list, programmes list, earliest_publication_date).
@@ -255,7 +320,6 @@ def _extract_regulations(
         pub_date_str = _attr(reg, "publicationDate")
 
         if number_title:
-            # Extract regulation number like "269/2014" from "269/2014 (OJ L78)"
             match = REGULATION_NUMBER_RE.search(number_title)
             if match:
                 legal_basis_set.add(f"Reg. {match.group(1)}")
@@ -268,15 +332,35 @@ def _extract_regulations(
             if pub_date and (earliest_date is None or pub_date < earliest_date):
                 earliest_date = pub_date
 
+    # Enrich with parent regulations based on programme codes
+    for programme in programmes_set:
+        for parent_reg in PROGRAMME_TO_PARENT_REGULATION.get(programme, []):
+            legal_basis_set.add(parent_reg)
+
     return sorted(legal_basis_set), sorted(programmes_set), earliest_date
 
 
-def _extract_remarks(entity_el: etree._Element) -> str | None:
-    """Extract and concatenate all remark texts."""
+def _extract_remarks(entity_el: etree._Element, name_aliases: list[dict[str, Any]]) -> str | None:
+    """Extract remarks from remark elements and substantive function descriptions.
+
+    Function descriptions longer than 50 characters from nameAlias elements are
+    treated as entity descriptions and included in remarks.
+    """
     remarks_parts: list[str] = []
+
+    # Standard remark elements
     for remark in entity_el.findall("ns:remark", NS):
         if remark.text and remark.text.strip():
             remarks_parts.append(remark.text.strip())
+
+    # Substantive function descriptions from name aliases
+    seen_functions: set[str] = set()
+    for alias in name_aliases:
+        func_text = alias.get("function") or ""
+        if len(func_text) > 50 and func_text not in seen_functions:
+            seen_functions.add(func_text)
+            remarks_parts.append(func_text)
+
     return "; ".join(remarks_parts) if remarks_parts else None
 
 
@@ -440,8 +524,11 @@ def _build_entity_dict(
     # Regulations -> legal_basis, programmes
     legal_basis, programmes, _earliest_reg_date = _extract_regulations(entity_el)
 
-    # Remarks
-    remarks = _extract_remarks(entity_el)
+    # Country of registration (entities only)
+    country_reg = _derive_country_of_registration(entity_el) if entity_type == "entity" else None
+
+    # Remarks (includes substantive function descriptions from name aliases)
+    remarks = _extract_remarks(entity_el, other_aliases)
 
     # Designation date (list_date)
     designation_date = _parse_date(_attr(entity_el, "designationDate"))
@@ -481,6 +568,7 @@ def _build_entity_dict(
         "legal_basis": legal_basis or None,
         "date_of_birth": dob,
         "nationality": citizenships or None,
+        "country_of_registration": country_reg,
         "remarks": remarks,
         "list_date": designation_date,
         "data_vintage": now,
