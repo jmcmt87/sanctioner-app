@@ -70,6 +70,7 @@ def _extract_pdf_sync(path: Path) -> ExtractedDocument:
     doc.close()
 
     full_text = "\n\n".join(page_texts)
+    full_text = clean_ocr_text(full_text)
     quality = _calculate_quality(full_text)
 
     log.info(
@@ -112,6 +113,25 @@ def _normalize_text(text: str) -> str:
     text = text.replace("“", '"')
     text = text.replace("”", '"')
     return text
+
+
+def _fix_spaced_words(match: re.Match) -> str:
+    return match.group(0).replace(" ", "")
+
+
+def clean_ocr_text(text: str) -> str:
+    """Clean common OCR artifacts from extracted PDF text."""
+    # Remove garbled punctuation sequences (3+ consecutive non-alphanumeric, non-space chars)
+    text = re.sub(r"[^\w\s]{3,}", "", text)
+
+    # Fix spaced-out words in headers (e.g., "W A S H I N G T O N" -> "WASHINGTON")
+    text = re.sub(r"\b([A-Z] ){3,}[A-Z]\b", _fix_spaced_words, text)
+
+    # Remove excessive whitespace left by cleaning
+    text = re.sub(r" {2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 
 
 def _clean_page_text(text: str, page_num: int, total_pages: int) -> str:

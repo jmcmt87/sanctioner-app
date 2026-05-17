@@ -179,6 +179,9 @@
 - [x] Text chunking strategy (1.3.3) — RecursiveCharacterTextSplitter wrapper in pipeline/chunking/text_chunker.py
 - [x] 20 enforcement PDFs chunked, embedded, and searchable (1.3.4) — manifest + auto-download in pipeline/sources/enforcement.py. DQR-verified: all 20 docs have correct content, 285 chunks with metadata JSONB populated, OCR fallback for garbled-font PDFs.
 - [x] OFAC Compliance Framework + 50% Rule in vector store (1.3.5) — pipeline/sources/guidance.py
+- [x] OFAC General Licenses ingested (5 GLs, 18 chunks) — pipeline/sources/general_licenses.py
+- [x] OFAC FAQ/Guidance PDFs ingested (3 docs, 40 chunks) — pipeline/sources/ofac_faq.py
+- [ ] EU Regulation 833/2014 ingested — pipeline/sources/eu_regulation.py (code ready, BLOCKED by 8GB RAM; see .tmp/eu_regulation_ingestion_ram_report.md)
 
 ---
 

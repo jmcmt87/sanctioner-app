@@ -57,7 +57,7 @@ class TestIngestGuidanceDocs:
     def _mock_extract(self):
         with patch("pipeline.sources.guidance.extract_pdf", new_callable=AsyncMock) as mock:
             mock.return_value = ExtractedDocument(
-                text="This is guidance document content for testing purposes.",
+                text="This is guidance document content for testing purposes. It contains sufficient text to pass the minimum chunk length filter during ingestion.",
                 page_count=5,
                 ocr_pages=[],
                 extraction_quality=0.95,

@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+COPY pyproject.toml /app/pyproject.toml
 COPY backend/ /app/backend/
 COPY ingestion/ /app/ingestion/
 

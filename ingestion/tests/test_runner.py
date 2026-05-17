@@ -14,7 +14,10 @@ class TestSourceRegistration:
     """Verify all expected sources are registered and correctly configured."""
 
     def test_all_expected_sources_registered(self):
-        expected = {"ofac_sdn", "ofac_nonsdn", "eu_consolidated", "enforcement", "guidance"}
+        expected = {
+            "ofac_sdn", "ofac_nonsdn", "eu_consolidated", "enforcement",
+            "guidance", "general_licenses", "ofac_faq", "eu_regulation",
+        }
         assert set(REGISTERED_SOURCES.keys()) == expected
 
     def test_every_registered_source_has_file_pattern(self):

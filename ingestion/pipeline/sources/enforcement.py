@@ -112,7 +112,7 @@ ENFORCEMENT_MANIFEST: dict[str, dict] = {
         "published_date": date(2019, 4, 15),
     },
     "ing_2012": {
-        "url": "https://ofac.treasury.gov/media/13891/download",
+        "url": "https://ofac.treasury.gov/media/13781/download",
         "title": "ING Bank N.V. Settlement Agreement",
         "published_date": date(2012, 6, 12),
     },
@@ -255,12 +255,15 @@ async def ingest_enforcement_pdfs(
             # Content validation: check the extracted text mentions the expected entity
             keyword = _extract_entity_keyword(entry["title"])
             if keyword and keyword.lower() not in extracted.text.lower():
-                pdf_log.warning(
-                    "content_mismatch",
+                pdf_log.error(
+                    "content_mismatch_skipping",
                     expected_keyword=keyword,
                     title=entry["title"],
                     text_preview=extracted.text[:200],
                 )
+                pdf_path.unlink()
+                records_skipped += 1
+                continue
 
             # Chunk
             data_vintage = datetime.now(UTC)

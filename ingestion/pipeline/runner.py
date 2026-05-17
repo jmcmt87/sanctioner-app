@@ -13,8 +13,11 @@ from pipeline.hashing import HashStore, compute_source_hash
 from pipeline.models import IngestionResult
 from pipeline.relationships import resolve_relationships
 from pipeline.sources.enforcement import ingest_enforcement_pdfs
+from pipeline.sources.eu_regulation import ingest_eu_regulations
 from pipeline.sources.eu_sanctions import ingest_eu_sanctions
+from pipeline.sources.general_licenses import ingest_general_licenses
 from pipeline.sources.guidance import ingest_guidance_docs
+from pipeline.sources.ofac_faq import ingest_ofac_faqs
 from pipeline.sources.ofac_nonsdn import ingest_ofac_nonsdn
 from pipeline.sources.ofac_sdn import ingest_ofac_sdn
 
@@ -28,6 +31,9 @@ REGISTERED_SOURCES: dict[str, SourceHandler] = {
     "eu_consolidated": ingest_eu_sanctions,
     "enforcement": ingest_enforcement_pdfs,
     "guidance": ingest_guidance_docs,
+    "general_licenses": ingest_general_licenses,
+    "ofac_faq": ingest_ofac_faqs,
+    "eu_regulation": ingest_eu_regulations,
 }
 
 SOURCE_FILES: dict[str, list[str]] = {
@@ -36,6 +42,9 @@ SOURCE_FILES: dict[str, list[str]] = {
     "eu_consolidated": ["eu_consolidated/*.xml"],
     "enforcement": ["enforcement/*.pdf"],
     "guidance": ["guidance/*.pdf"],
+    "general_licenses": ["general_licenses/*.pdf"],
+    "ofac_faq": ["ofac_faq/*.pdf"],
+    "eu_regulation": ["eu_regulation/*.pdf"],
 }
 
 

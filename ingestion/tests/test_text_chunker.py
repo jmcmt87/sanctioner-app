@@ -66,7 +66,10 @@ class TestChunkDocument:
     def test_short_text_single_chunk(self):
         chunker = TextChunker()
         metadata = _make_metadata()
-        text = "Short text that fits in one chunk."
+        text = (
+            "This is a single chunk of text that is long enough to pass the minimum"
+            " character threshold but short enough to fit into a single chunk without splitting."
+        )
 
         chunks = chunker.chunk_document(text, metadata)
 
@@ -118,10 +121,14 @@ class TestMetadataValidation:
 
     def test_valid_jurisdictions_accepted(self):
         chunker = TextChunker()
+        text = (
+            "This text is long enough to meet the minimum chunk length requirement"
+            " for the chunker validation test across all valid jurisdictions."
+        )
 
         for jurisdiction in ("US", "EU", "DE"):
             metadata = _make_metadata(jurisdiction=jurisdiction)
-            chunks = chunker.chunk_document("Valid text content.", metadata)
+            chunks = chunker.chunk_document(text, metadata)
             assert len(chunks) == 1
 
 

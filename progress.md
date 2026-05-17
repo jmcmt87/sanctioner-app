@@ -1,5 +1,81 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 20: Document Chunk Quality Fixes + New Source Ingestion
+
+### Completed: All fixes from document_chunk_quality_fix_report + 3 new document sources ingested
+
+**Fix 1 — ING Bank content mismatch (Critical)**
+- Root cause: OFAC URL `media/13891` served wrong PDF (UniCredit content)
+- Fixed URL to `media/13781` (correct ING settlement)
+- Added content validation: if expected keyword not found in extracted text, skip + delete the PDF
+- Verified: ING chunks now contain actual ING content
+
+**Fix 2 — OCR text cleaning**
+- Added `clean_ocr_text()` to `pipeline/extraction.py`
+- Removes garbled punctuation sequences (`[^\w\s]{3,}`)
+- Fixes spaced-out OCR headers (`O F A C` → `OFAC`)
+- Collapses redundant whitespace/newlines
+- Result: 0 chunks with OCR artifacts (was 10+)
+
+**Fix 3 — Runt chunk filtering**
+- Raised `_MIN_CHUNK_CHARS` from 50 → 100 in `text_chunker.py`
+- Changed from warning to actual filtering (short chunks no longer stored)
+- Deleted 1 existing runt chunk (Bittrex, 173 chars)
+- Smallest chunk in DB now: 168 chars
+
+**New Source: OFAC General Licenses** (`pipeline/sources/general_licenses.py`)
+- 5 verified GLs: GL8K, GL13A, GL25F, GL44, GL4C (Russia-related)
+- Result: 18 chunks across 5 documents, 100% embedding coverage
+
+**New Source: OFAC FAQ/Guidance** (`pipeline/sources/ofac_faq.py`)
+- 3 guidance PDFs: FFI Sanctions Guidance, Food Security Fact Sheet, Russia Compliance Alert
+- Result: 40 chunks across 3 documents, 100% embedding coverage
+
+**New Source: EU Regulation** (`pipeline/sources/eu_regulation.py`)
+- Structure-aware `RegulationChunker` that splits at article boundaries
+- Processes reg_833_2014 (734 pages, 809 articles → 1190 chunks) and reg_269_2014
+- Critical article validation for 833/2014
+- **BLOCKED by 8GB RAM constraint** — code ready and tested but cannot embed 1190 chunks with bge-m3 loaded on 8GB machine
+
+**Supporting infrastructure:**
+- `pipeline/chunking/regulation_chunker.py` — article-boundary chunker with fallback splitting
+- `scripts/ingest_general_licenses.py`, `scripts/ingest_ofac_faq.py`, `scripts/ingest_eu_regulation.py`
+- Runner updated with 3 new sources in `REGISTERED_SOURCES` and `SOURCE_FILES`
+- Dockerfile fixed for uv workspace resolution
+
+### Database State
+
+| document_type    | jurisdiction | chunks | documents |
+|-----------------|-------------|--------|-----------|
+| enforcement     | US          | 286    | 21        |
+| faq             | US          | 40     | 3         |
+| general_license | US          | 18     | 5         |
+| guidance        | US          | 26     | 2         |
+| regulation      | EU          | **0**  | **0** (RAM blocked) |
+| **TOTAL**       |             | **370**| **31**    |
+
+All chunks have embeddings. 0 OCR artifacts. Min chunk length: 168 chars.
+
+### Errors/Blockers Encountered
+- OFAC URLs returning 404 (website reorganized) — found correct media IDs via WebSearch
+- EUR-Lex URLs returning 404 (no consolidation at expected date) — found correct dates via WebSearch
+- OFAC FAQs are HTML not PDF — switched to PDF guidance documents instead
+- Docker workspace error — fixed by adding root `pyproject.toml` COPY to Dockerfile
+- **EU regulation OOM**: bge-m3 (2.3GB) + 1190 chunks embedding exceeds 8GB RAM even with sub-batching
+- Report with 5 resolution options written to `.tmp/eu_regulation_ingestion_ram_report.md`
+
+### Tests
+- All 292 tests passing
+- Updated test fixtures for new minimum chunk length (100 chars)
+- Updated runner test for 3 new registered sources
+
+### Next Steps
+1. **Resolve EU regulation RAM issue** (see `.tmp/eu_regulation_ingestion_ram_report.md` for options — simplest: run on 16GB+ machine, or use smaller embedding model for dev)
+2. Phase 1 checkpoint is otherwise fully complete — begin Phase 2 (Agent Core & Retrieval)
+3. First Phase 2 task: **2.1.1** LLM client abstraction
+
+---
+
 ## 2026-05-17 — Session 19: OFAC Data Quality Fix (country_of_registration)
 
 ### Completed: Derived country_of_registration for OFAC entities from identifiers + addresses

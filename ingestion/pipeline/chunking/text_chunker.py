@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 VALID_JURISDICTIONS = {"US", "EU", "DE"}
 VALID_DOCUMENT_TYPES = {"enforcement", "regulation", "guidance", "faq", "general_license"}
 
-_MIN_CHUNK_CHARS = 50
+_MIN_CHUNK_CHARS = 100
 _MAX_CHUNK_CHARS = 3500
 
 
@@ -55,10 +55,19 @@ class TextChunker:
 
         splits = self._splitter.split_text(text)
 
-        chunks = [
-            ChunkResult(content=split, chunk_index=i, metadata=metadata)
-            for i, split in enumerate(splits)
-        ]
+        chunks: list[ChunkResult] = []
+        idx = 0
+        for split in splits:
+            if len(split) < _MIN_CHUNK_CHARS:
+                logger.info(
+                    "runt_chunk_filtered",
+                    source=metadata.source_document,
+                    length=len(split),
+                    preview=split[:80],
+                )
+                continue
+            chunks.append(ChunkResult(content=split, chunk_index=idx, metadata=metadata))
+            idx += 1
 
         self._log_chunk_stats(chunks, metadata.source_document)
 
@@ -100,14 +109,7 @@ class TextChunker:
 
         for chunk in chunks:
             length = len(chunk.content)
-            if length < _MIN_CHUNK_CHARS:
-                logger.warning(
-                    "short_chunk_detected",
-                    source=source,
-                    chunk_index=chunk.chunk_index,
-                    length=length,
-                )
-            elif length > _MAX_CHUNK_CHARS:
+            if length > _MAX_CHUNK_CHARS:
                 logger.warning(
                     "long_chunk_detected",
                     source=source,
