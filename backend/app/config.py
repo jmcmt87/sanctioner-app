@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 
-    embedding_model_name: str = "BAAI/bge-m3"
-    embedding_model_path: str = ""
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dim: int = 384
 
     langsmith_api_key: str = ""
     langsmith_project: str = "sanctions-screening-assistant"

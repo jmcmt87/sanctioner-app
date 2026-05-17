@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import date, datetime
 
@@ -20,6 +21,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+EMBEDDING_DIM = int(os.environ.get("SSA_EMBEDDING_DIM", "384"))
 
 
 class Base(DeclarativeBase):
@@ -200,7 +203,7 @@ class DocumentChunk(Base):
         server_default=func.gen_random_uuid(),
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list | None] = mapped_column(Vector(1024))
+    embedding: Mapped[list | None] = mapped_column(Vector(EMBEDDING_DIM))
     source_document: Mapped[str] = mapped_column(Text, nullable=False)
     source_title: Mapped[str | None] = mapped_column(Text)
     jurisdiction: Mapped[str] = mapped_column(Text, nullable=False)

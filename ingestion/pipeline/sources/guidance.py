@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pipeline.chunk_store import store_document_chunks
 from pipeline.chunking.text_chunker import ChunkMetadata, TextChunker
+from pipeline.config import config
 from pipeline.db_models import IngestionLog
 from pipeline.embeddings import EmbeddingModel
 from pipeline.extraction import extract_pdf
@@ -43,7 +44,7 @@ async def _process_pdf(
     manifest_entry: dict,
     session: AsyncSession,
     chunker: TextChunker,
-    embedder: EmbeddingModel,
+    embedder: EmbeddingModel | None,
     data_vintage: datetime,
 ) -> int:
     """Extract, chunk, embed, and store a single guidance PDF. Returns chunk count."""
@@ -78,8 +79,7 @@ async def _process_pdf(
         log.warning("no_chunks_produced", slug=slug)
         return 0
 
-    texts = [c.content for c in chunks]
-    embeddings = embedder.embed_batch(texts)
+    embeddings = embedder.embed_batch([c.content for c in chunks]) if embedder else None
 
     stored = await store_document_chunks(session, chunks, embeddings, source_document)
     log.info("pdf_stored", slug=slug, chunks_stored=stored)
@@ -100,7 +100,7 @@ async def ingest_guidance_docs(
     guidance_dir.mkdir(parents=True, exist_ok=True)
 
     chunker = TextChunker()
-    embedder = EmbeddingModel()
+    embedder = None if config.skip_embeddings else EmbeddingModel()
 
     records_processed = 0
     records_added = 0

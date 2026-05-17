@@ -15,12 +15,15 @@ logger = structlog.get_logger()
 async def store_document_chunks(
     session: AsyncSession,
     chunks: list[ChunkResult],
-    embeddings: list[list[float]],
+    embeddings: list[list[float]] | None,
     source_document: str,
     metadata: dict | None = None,
 ) -> int:
-    """Store document chunks with embeddings, replacing any existing chunks for this document."""
-    if len(chunks) != len(embeddings):
+    """Store document chunks, replacing any existing chunks for this document.
+
+    When embeddings is None, stores chunks with NULL embeddings (for later backfill).
+    """
+    if embeddings is not None and len(chunks) != len(embeddings):
         msg = f"chunks ({len(chunks)}) and embeddings ({len(embeddings)}) must have equal length"
         raise ValueError(msg)
 
@@ -39,12 +42,12 @@ async def store_document_chunks(
         )
 
     now = datetime.now(UTC)
-    for chunk, embedding in zip(chunks, embeddings, strict=True):
+    for i, chunk in enumerate(chunks):
         meta = chunk.metadata
         session.add(
             DocumentChunk(
                 content=chunk.content,
-                embedding=embedding,
+                embedding=embeddings[i] if embeddings is not None else None,
                 source_document=meta.source_document,
                 source_title=meta.source_title,
                 jurisdiction=meta.jurisdiction,
@@ -64,6 +67,7 @@ async def store_document_chunks(
         "chunks_stored",
         source_document=source_document,
         count=len(chunks),
+        has_embeddings=embeddings is not None,
     )
 
     return len(chunks)

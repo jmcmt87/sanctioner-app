@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pipeline.chunking.regulation_chunker import RegulationChunker, RegulationChunkResult
 from pipeline.chunking.text_chunker import ChunkMetadata, ChunkResult
+from pipeline.config import config as ingestion_config
 from pipeline.db_models import IngestionLog
 from pipeline.embeddings import EmbeddingModel
 from pipeline.extraction import extract_pdf
@@ -90,7 +91,7 @@ async def ingest_eu_regulations(
     )
 
     chunker = RegulationChunker()
-    embedder = EmbeddingModel()
+    embedder = None if ingestion_config.skip_embeddings else EmbeddingModel()
 
     records_processed = 0
     records_added = 0
@@ -156,14 +157,16 @@ async def ingest_eu_regulations(
             chunks = _convert_regulation_chunks(reg_chunks)
 
             # Embed in sub-batches to avoid OOM on large regulations (8GB RAM system)
-            embed_batch_size = 100
-            embeddings: list[list[float]] = []
-            for i in range(0, len(chunks), embed_batch_size):
-                batch = chunks[i : i + embed_batch_size]
-                batch_embeddings = embedder.embed_batch(
-                    [c.content for c in batch], batch_size=8
-                )
-                embeddings.extend(batch_embeddings)
+            embeddings: list[list[float]] | None = None
+            if embedder:
+                embed_batch_size = 100
+                embeddings = []
+                for i in range(0, len(chunks), embed_batch_size):
+                    batch = chunks[i : i + embed_batch_size]
+                    batch_embeddings = embedder.embed_batch(
+                        [c.content for c in batch], batch_size=8
+                    )
+                    embeddings.extend(batch_embeddings)
 
             # Store with article_reference in metadata
             article_refs = {c.chunk_index: c.metadata.article_reference for c in reg_chunks}
@@ -245,7 +248,7 @@ async def ingest_eu_regulations(
 async def _store_regulation_chunks(
     session: AsyncSession,
     chunks: list[ChunkResult],
-    embeddings: list[list[float]],
+    embeddings: list[list[float]] | None,
     source_document: str,
     article_refs: dict[int, str | None],
 ) -> int:
@@ -256,7 +259,7 @@ async def _store_regulation_chunks(
 
     from pipeline.db_models import DocumentChunk
 
-    if len(chunks) != len(embeddings):
+    if embeddings is not None and len(chunks) != len(embeddings):
         msg = f"chunks ({len(chunks)}) and embeddings ({len(embeddings)}) must have equal length"
         raise ValueError(msg)
 
@@ -275,12 +278,12 @@ async def _store_regulation_chunks(
         )
 
     now = datetime.now(UTC)
-    for chunk, embedding in zip(chunks, embeddings, strict=True):
+    for i, chunk in enumerate(chunks):
         meta = chunk.metadata
         session.add(
             DocumentChunk(
                 content=chunk.content,
-                embedding=embedding,
+                embedding=embeddings[i] if embeddings is not None else None,
                 source_document=meta.source_document,
                 source_title=meta.source_title,
                 jurisdiction=meta.jurisdiction,
@@ -300,6 +303,7 @@ async def _store_regulation_chunks(
         "regulation_chunks_stored",
         source_document=source_document,
         count=len(chunks),
+        has_embeddings=embeddings is not None,
     )
 
     return len(chunks)

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pipeline.chunk_store import store_document_chunks
 from pipeline.chunking.text_chunker import ChunkMetadata, TextChunker
+from pipeline.config import config
 from pipeline.db_models import IngestionLog
 from pipeline.embeddings import EmbeddingModel
 from pipeline.extraction import extract_pdf
@@ -213,7 +214,7 @@ async def ingest_enforcement_pdfs(
     )
 
     chunker = TextChunker()
-    embedder = EmbeddingModel()
+    embedder = None if config.skip_embeddings else EmbeddingModel()
 
     records_processed = 0
     records_added = 0
@@ -283,7 +284,7 @@ async def ingest_enforcement_pdfs(
                 continue
 
             # Embed
-            embeddings = embedder.embed_batch([c.content for c in chunks])
+            embeddings = embedder.embed_batch([c.content for c in chunks]) if embedder else None
 
             # Extract structured metadata
             doc_metadata = _extract_enforcement_metadata(extracted.text, entry["title"])

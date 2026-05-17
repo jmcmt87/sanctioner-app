@@ -1,5 +1,53 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 21: Configurable Embedding Model + Two-Pass Ingestion
+
+### Completed: Unblock EU regulation ingestion on 8GB RAM machine
+
+Implemented the full spec from `.tmp/eu_regulation_ingestion_ram_report.md` — configurable embedding model, two-pass ingestion, and batch backfill script.
+
+**Change 1 — Configurable Embedding Model**
+- `ingestion/pipeline/embeddings.py` — `EmbeddingModel` reads `SSA_EMBEDDING_MODEL` + `SSA_EMBEDDING_DIM` from env vars. Validates actual model dimension matches config on load. `dimension` property no longer requires loading the model.
+- `ingestion/pipeline/config.py` — Replaced `embedding_model_name`/`embedding_model_path` with `embedding_model` (default: `all-MiniLM-L6-v2`), `embedding_dim` (default: 384), `skip_embeddings` (default: false)
+- `backend/app/config.py` — Same: replaced with `embedding_model` + `embedding_dim`
+- `backend/app/db/models.py` — `DocumentChunk.embedding` uses `EMBEDDING_DIM` from env var instead of hardcoded 1024
+
+**Change 2 — Two-Pass Ingestion (SSA_SKIP_EMBEDDINGS)**
+- `ingestion/pipeline/chunk_store.py` — `store_document_chunks` accepts `embeddings: list | None`, stores NULL when None
+- All 5 unstructured source parsers updated: `enforcement.py`, `eu_regulation.py`, `general_licenses.py`, `guidance.py`, `ofac_faq.py` — each conditionally creates embedder based on `config.skip_embeddings`
+- `_store_regulation_chunks` in `eu_regulation.py` also handles None embeddings
+
+**Change 3 — Backfill Script**
+- `ingestion/scripts/backfill_embeddings.py` — Idempotent batch embedding of NULL-embedding chunks. Configurable via `BACKFILL_BATCH_SIZE` env var (default: 25). Logs progress per batch with elapsed time and chunks/second.
+
+**Change 4 — Alembic Migration**
+- `backend/alembic/versions/b3d7e2f14a90_make_vector_dim_configurable.py` — Drops embedding column + HNSW index, recreates at configured dimension. Downgrade restores 1024-dim.
+
+**Change 5 — Documentation**
+- Both `CLAUDE.md` files: updated tech stack table, added Embedding Configuration section, added Memory-Constrained Development subsection
+- `.env.example`: added `SSA_EMBEDDING_MODEL`, `SSA_EMBEDDING_DIM`, `SSA_SKIP_EMBEDDINGS`, `BACKFILL_BATCH_SIZE`
+- `.tmp/next_steps_embedding_backfill.md`: step-by-step runbook for the migration + ingestion + backfill sequence
+
+**Tests**
+- Updated `test_embeddings.py` for new 384-dim default and API changes (dimension property no longer loads model)
+- All 293 ingestion tests + 2 backend tests pass
+- Ruff clean on all modified files
+
+### Errors/Blockers Encountered
+- None. All changes applied cleanly.
+
+### Next Steps
+1. **Run the migration + ingestion + backfill sequence** (see `.tmp/next_steps_embedding_backfill.md`):
+   - `cd backend && uv run alembic upgrade head` (recreates vector column at 384-dim)
+   - Rebuild Docker image
+   - Ingest EU regs with `SSA_SKIP_EMBEDDINGS=true` (stores 1190 chunks with NULL embeddings)
+   - Run `backfill_embeddings.py` (embeds all ~1560 chunks with MiniLM)
+   - Verify retrieval: Article 5b chunks should appear for deposit restriction queries
+2. Phase 1 checkpoint will then be fully complete — begin Phase 2 (Agent Core & Retrieval)
+3. First Phase 2 task: **2.1.1** LLM client abstraction
+
+---
+
 ## 2026-05-17 — Session 20: Document Chunk Quality Fixes + New Source Ingestion
 
 ### Completed: All fixes from document_chunk_quality_fix_report + 3 new document sources ingested

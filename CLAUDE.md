@@ -17,7 +17,7 @@ AI-powered compliance research tool for dual-jurisdiction sanctions analysis (US
 | Agent Orchestration | LangGraph + LangChain | LangGraph for state machine routing. LangChain for SQL chains, retrievers, output parsers |
 | LLM | Mistral (swappable) | Dev: Mistral API. PoC: Ollama + Ministral 14B. Prod: vLLM + Mistral Large 3 |
 | Database | PostgreSQL 16 + pgvector | Single DB: structured entity tables + vector embeddings + metadata |
-| Embeddings | sentence-transformers (self-hosted) | Zero external API calls. Model TBD (likely BAAI/bge-m3 for multilingual) |
+| Embeddings | sentence-transformers (self-hosted) | Configurable via env vars. Dev: all-MiniLM-L6-v2 (384-dim, 90MB). Prod: BAAI/bge-m3 (1024-dim, 2.3GB) |
 | Data Lake | AWS S3 | Raw document storage. SSE-KMS encrypted. Source of truth for ingestion |
 | Observability | LangSmith + Prometheus | Agent decision tracing, query routing visibility |
 | Python Tooling | uv | Package management, virtual environments, script running |
@@ -34,6 +34,28 @@ SSA_LLM_API_KEY=        # API key (empty string for local Ollama)
 ```
 
 All LLM calls go through a single abstraction layer so swapping providers requires zero code changes.
+
+## Embedding Configuration
+
+The embedding model is swappable via environment variables, same principle as the LLM.
+
+```
+SSA_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2  # Dev default (90MB, 384-dim)
+SSA_EMBEDDING_DIM=384
+
+# Production:
+# SSA_EMBEDDING_MODEL=BAAI/bge-m3  (2.3GB, 1024-dim, multilingual)
+# SSA_EMBEDDING_DIM=1024
+```
+
+Dev uses a lightweight model because the development machine has 8GB RAM and PyTorch
+runs in Docker. The full bge-m3 model (2.3GB) causes OOM in Docker on 8GB machines.
+Retrieval quality evaluation happens on AWS with bge-m3 — dev model is for pipeline
+testing only, not quality benchmarking.
+
+When switching models: run the Alembic migration to recreate the vector column and HNSW
+index with the new dimension, then re-run ingestion or use `backfill_embeddings.py` to
+re-embed in batches for memory-constrained environments.
 
 ## Project Layout
 
@@ -200,6 +222,17 @@ Rules: every record carries `data_vintage` + `ingestion_timestamp`. Every API re
    ```
 7. Tests: `cd ingestion && uv run pytest` or `cd backend && uv run pytest`
 8. Lint: `uv run ruff check . --fix && uv run ruff format .`
+
+### Memory-Constrained Development
+
+The dev machine has 8GB RAM. PyTorch is not compatible with the host OS, so all
+embedding work runs in Docker. To avoid OOM during ingestion:
+
+1. Use `all-MiniLM-L6-v2` (90MB) as the dev embedding model, not `bge-m3` (2.3GB)
+2. For large document ingestion, use two-pass mode: set `SSA_SKIP_EMBEDDINGS=true`
+   to store text chunks first, then run `backfill_embeddings.py` to embed in batches
+3. Docker memory limit: `--memory=6g` to leave room for the host OS
+4. Batch size for embedding: 25 chunks with MiniLM, 10 chunks with bge-m3
 
 ## Common Tasks
 
