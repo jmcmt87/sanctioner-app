@@ -282,12 +282,39 @@ def _build_entity_dict(
             }
         )
 
-    # Extract country_of_registration from remarks for non-individual entities
+    # Derive country_of_registration for non-individual entities using priority fallback:
+    #   1. "Nationality of Registration" in remarks (explicit, rare)
+    #   2. Registration Number/ID/Business Registration Number identifier country
+    #   3. Tax ID identifier country
+    #   4. Primary address country
     country_of_registration: str | None = None
-    if entity_type == "entity" and remarks:
-        reg_country_match = REGISTRATION_COUNTRY_RE.search(remarks)
-        if reg_country_match:
-            country_of_registration = reg_country_match.group(1).strip().rstrip(".")
+    if entity_type == "entity":
+        if remarks:
+            reg_country_match = REGISTRATION_COUNTRY_RE.search(remarks)
+            if reg_country_match:
+                country_of_registration = reg_country_match.group(1).strip().rstrip(".")
+
+        if not country_of_registration:
+            for ident in identifiers:
+                if ident["id_type"] in (
+                    "Registration Number",
+                    "Registration ID",
+                    "Business Registration Number",
+                ) and ident.get("country"):
+                    country_of_registration = ident["country"]
+                    break
+
+        if not country_of_registration:
+            for ident in identifiers:
+                if ident["id_type"] == "Tax ID" and ident.get("country"):
+                    country_of_registration = ident["country"]
+                    break
+
+        if not country_of_registration:
+            for addr in addresses:
+                if addr.get("country"):
+                    country_of_registration = addr["country"]
+                    break
 
     normalized_aliases = [
         {

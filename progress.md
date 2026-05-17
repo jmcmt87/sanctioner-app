@@ -1,5 +1,43 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 19: OFAC Data Quality Fix (country_of_registration)
+
+### Completed: Derived country_of_registration for OFAC entities from identifiers + addresses
+
+**Parser enhancement** (`ingestion/pipeline/sources/ofac_sdn.py`)
+- Extended `_build_entity_dict` to derive `country_of_registration` using 4-level priority fallback:
+  1. "Nationality of Registration" in remarks (existing, rare — 27 records)
+  2. Registration Number/ID/Business Registration Number identifier country
+  3. Tax ID identifier country
+  4. Primary address country
+- Non-SDN parser inherits this automatically via shared `_build_entity_dict`
+
+**Database enrichment** (3 sequential SQL updates on existing data)
+- Same priority logic applied to all existing OFAC entity records
+
+**Results:**
+
+| Source | Before | After |
+|--------|--------|-------|
+| `ofac_sdn` entities | 0.2% (15/9,670) | **99.2%** (9,592/9,670) |
+| `ofac_nonsdn` entities | 3.3% (12/363) | **100%** (363/363) |
+
+**Verification:**
+- Top countries: Russia (3,726), Iran (885), China (677), Mexico (499), UAE (481) — correct distribution
+- Spot-checked VTB, Sberbank, Gazprombank, Rosneft — all show "Russia"
+- No country value inconsistencies (single "Russia" variant, no duplicates)
+- All 292 tests pass, ruff clean
+
+### Errors/Blockers Encountered
+- None
+
+### Next Steps
+1. Phase 1 checkpoint is fully complete — begin Phase 2 (Agent Core & Retrieval)
+2. First Phase 2 task: **2.1.1** LLM client abstraction
+3. Then: **2.2.1** LangGraph state schema
+
+---
+
 ## 2026-05-17 — Session 18: EU Data Quality Fixes (Parser Enrichment)
 
 ### Completed: Applied 3 fixes from EU data quality report, dismissed 1 false positive
