@@ -181,7 +181,7 @@
 - [x] OFAC Compliance Framework + 50% Rule in vector store (1.3.5) — pipeline/sources/guidance.py
 - [x] OFAC General Licenses ingested (5 GLs, 18 chunks) — pipeline/sources/general_licenses.py
 - [x] OFAC FAQ/Guidance PDFs ingested (3 docs, 40 chunks) — pipeline/sources/ofac_faq.py
-- [ ] EU Regulation 833/2014 ingested — pipeline/sources/eu_regulation.py (code ready, RAM blocker resolved via configurable embedding model + two-pass ingestion; run migration + ingest + backfill per .tmp/next_steps_embedding_backfill.md)
+- [x] EU Regulation 833/2014 + 269/2014 ingested — pipeline/sources/eu_regulation.py (2610 chunks, 384-dim MiniLM embeddings via two-pass ingestion + backfill)
 
 ---
 

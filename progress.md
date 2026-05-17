@@ -1,5 +1,60 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 23: EU Regulation Embedding Backfill (Phase 1 Complete)
+
+### Completed: Ran the full migration + ingestion + backfill sequence
+
+Executed all steps from `.tmp/next_steps_embedding_backfill.md` to bring EU regulation text into the vector store.
+
+**Step 1 — Alembic migration** (`b3d7e2f14a90`)
+- Dropped 1024-dim vector column, recreated at 384-dim
+- All 370 existing US chunks' embeddings set to NULL (re-embedded in Step 4)
+
+**Step 2 — Docker image rebuild**
+- Rebuilt `sanctions-ingestion` image with updated code (configurable embeddings, skip flag)
+
+**Step 3 — EU regulation ingestion (text only, no embeddings)**
+- Reg. 833/2014: 734 pages, 809 articles → **1190 chunks** (11 pages OCR fallback, 96.1% quality)
+- Reg. 269/2014: 989 pages, 39 articles → **1420 chunks** (0 OCR pages, 96.7% quality)
+- Total: **2610 EU regulation chunks** stored with NULL embeddings
+
+**Step 4 — Embedding backfill (MiniLM, batch=25)**
+- Embedded all 2980 chunks (370 US + 2610 EU) in 197 seconds (~15 chunks/sec)
+- Model: `paraphrase-multilingual-MiniLM-L12-v2` (384-dim)
+- Final: 0 NULL embeddings remaining
+
+**Step 5 — Retrieval verification**
+- Article 5b deposit restriction chunks confirmed present and queryable
+- HNSW index functional for similarity search
+
+### Database State
+
+| document_type   | jurisdiction | chunks |
+|-----------------|-------------|--------|
+| regulation      | EU          | 2610   |
+| enforcement     | US          | 286    |
+| faq             | US          | 40     |
+| general_license | US          | 18     |
+| guidance        | US          | 26     |
+| **TOTAL**       |             | **2980** |
+
+All chunks have 384-dim embeddings. 0 NULL embeddings.
+
+### Errors/Blockers Encountered
+- None. All steps completed cleanly.
+- FutureWarning from sentence-transformers (`get_sentence_embedding_dimension` renamed to `get_embedding_dimension`) — cosmetic only, does not affect functionality.
+
+### Phase 1 Status: COMPLETE
+
+All Phase 1 checkpoint items are now checked off. Ready to begin Phase 2 (Agent Core & Retrieval).
+
+### Next Steps
+1. **Begin Phase 2** — Agent Core & Retrieval
+2. First task: **2.1.1** LLM client abstraction (Mistral/Ollama/vLLM wrapper)
+3. Then: **2.2.1** LangGraph state schema
+
+---
+
 ## 2026-05-17 — Session 22: Switch Dev Embedding Model to Multilingual
 
 ### Completed: Replace all-MiniLM-L6-v2 with paraphrase-multilingual-MiniLM-L12-v2
