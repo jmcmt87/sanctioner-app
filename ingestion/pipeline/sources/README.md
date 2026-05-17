@@ -15,12 +15,12 @@ Each file in this directory handles ingestion for one sanctions data source. Str
 | OFAC Guidance | `guidance.py` | PDF (2 docs) | Quarterly | ✅ Implemented |
 | OFAC General Licenses | `general_licenses.py` | PDF (5 docs) | Weekly | ✅ Implemented |
 | OFAC FAQ/Guidance | `ofac_faq.py` | PDF (3 docs) | Monthly | ✅ Implemented |
-| EU Regulations (833/2014, 269/2014) | `eu_regulation.py` | HTML/PDF | Weekly check | ⚠️ Code ready, blocked by RAM (see note) |
+| EU Regulations (833/2014, 269/2014) | `eu_regulation.py` | HTML/PDF | Weekly check | ✅ Implemented |
 | EU Commission FAQs on Reg. 833/2014 | — | PDF | Monthly | ❌ Not started |
 | German Guidance (Bundesbank, BaFin, Ministry) | — | PDF | Quarterly | ❌ Not started |
 | EU Derogation/Authorization Guidance | — | PDF/HTML | Quarterly | ❌ Not started |
 
-**EU Regulation note:** The `eu_regulation.py` parser and structure-aware `RegulationChunker` are fully implemented and tested. Reg. 833/2014 (734 pages, 809 articles) chunks correctly into 1,190 chunks with article-boundary splitting. However, embedding 1,190 chunks with bge-m3 (2.3GB model) exceeds 8GB RAM. Resolution options documented in `.tmp/eu_regulation_ingestion_ram_report.md`. Run on a 16GB+ machine or use a smaller embedding model for local dev.
+**Embedding model:** Development uses `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions, 471MB, 50+ languages) for RAM-constrained environments. Production target is `BAAI/bge-m3` (1024 dimensions, 2.3GB) for higher retrieval precision. The model is configurable via `SSA_EMBEDDING_MODEL` and `SSA_EMBEDDING_DIM` environment variables. All chunks in the database must use the same embedding model — switching models triggers a full re-embed via the `backfill_embeddings.py` script.
 
 ---
 
@@ -493,34 +493,44 @@ Tags: `jurisdiction='US'`, `document_type='faq'`
 
 ---
 
-## EU Regulations (Code Ready, Blocked by RAM)
+## EU Regulations (833/2014 and 269/2014)
 
 ### What It Is
 
-The full legal text of EU sanctions regulations — the documents that describe WHAT is prohibited, as opposed to the entity list which describes WHO is designated. The cornerstone document is Reg. 833/2014 (Russia sectoral sanctions), covering trade restrictions, financial restrictions, energy restrictions, anti-circumvention provisions, and exemptions.
+The full legal text of EU sanctions regulations — the documents that describe WHAT is prohibited, as opposed to the entity list which describes WHO is designated. These are the core regulatory documents that analysts reference daily for interpretation questions.
+
+- **Reg. 833/2014** (Russia sectoral sanctions): ~734 pages covering trade restrictions, financial restrictions (deposit caps, securities prohibitions), energy restrictions (oil price cap, LNG), anti-circumvention provisions, and exemptions. Amended 20+ times since 2014. The consolidated version from EUR-Lex is the source of truth.
+- **Reg. 269/2014** (Individual/entity asset freeze designations): Includes the regulation framework plus annexes with listing justifications for every designated individual and entity — the Council's stated reasons for each designation.
 
 **Pipeline:** HTML/PDF download from EUR-Lex → structure-aware chunking (article-boundary splitting via `RegulationChunker`) → embedding → `document_chunks`
 
-### Implementation Status
+### Document Inventory
 
-The `eu_regulation.py` parser and `regulation_chunker.py` are fully implemented and tested:
+| Document | Articles | Chunks | Description |
+|----------|----------|--------|-------------|
+| Reg. 833/2014 (consolidated) | 809 | 1,190 | Russia sectoral sanctions — trade, finance, energy, anti-circumvention |
+| Reg. 269/2014 (consolidated) | varies | 1,420 | Individual/entity asset freeze framework + listing justification annexes |
 
-- **Reg. 833/2014:** 734 pages, 809 articles → 1,190 chunks with article-boundary splitting
-- **Reg. 269/2014:** Planned for same pipeline
-- **Article reference tagging:** Each chunk tagged with the appropriate `article_reference` (e.g., `Article 5b(1)`, `Article 3n(4)`)
-- **Critical article validation:** Post-ingestion check verifies that key articles are represented (3a, 3m, 3n, 5, 5a, 5aa, 5b, 5e, 5f, 5g, 5h, 5k, 5n, 11, 12)
+**Total:** 2,610 chunks across 2 regulations, 100% embedding coverage.
 
-**Blocker:** Embedding 1,190 chunks with bge-m3 (2.3GB model) exceeds 8GB RAM on the development machine. Options documented in `.tmp/eu_regulation_ingestion_ram_report.md`.
+Tags: `jurisdiction='EU'`, `document_type='regulation'`
 
-Tags (when ingested): `jurisdiction='EU'`, `document_type='regulation'`
+### Structure-Aware Chunking
 
-### How Compliance Analysts Will Use It
+The `RegulationChunker` splits at article boundaries rather than using generic text splitting. Each chunk is tagged with the appropriate `article_reference` (e.g., `Article 5b(1)`, `Article 3n(4)`), enabling metadata-filtered retrieval — an analyst asking about Article 5b gets chunks from that specific article, not semantically similar text from unrelated articles.
+
+**Critical article validation:** Post-ingestion verification confirms that key articles of Reg. 833/2014 are represented in the chunks: Articles 3a, 3m, 3n, 5, 5a, 5aa, 5b, 5e, 5f, 5g, 5h, 5k, 5n, 11, 12.
+
+The high chunk count for Reg. 269/2014 (1,420) reflects its annexes, which contain listing justifications for every designated person and entity — valuable for "why was this person/entity sanctioned?" queries that the structured entity list cannot answer.
+
+### How Compliance Analysts Use It
 
 - **Regulation interpretation:** "What are the deposit limits under Article 5b?"
 - **Activity restrictions:** "Can my bank provide investment services to a Russian entity?"
 - **Trade restrictions:** "What goods are covered by the oil price cap under Article 3n?"
 - **Anti-circumvention:** "What does Article 12 say about circumvention?"
 - **Exemptions:** "Are there exemptions for humanitarian transactions?"
+- **Designation reasoning:** "Why was this entity sanctioned under Reg. 269/2014?" (from annexes)
 
 ### Refresh Rationale
 
@@ -541,14 +551,16 @@ Tags (when ingested): `jurisdiction='EU'`, `document_type='regulation'`
 
 ### Unstructured Data (RAG Corpus)
 
+Embedded with `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions, multilingual). Production target: `BAAI/bge-m3` (1024 dimensions).
+
 | Document Type | Jurisdiction | Documents | Chunks | Embedding Coverage |
 |--------------|-------------|-----------|--------|-------------------|
 | enforcement | US | 21 | 286 | 100% |
 | faq | US | 3 | 40 | 100% |
 | general_license | US | 5 | 18 | 100% |
 | guidance | US | 2 | 26 | 100% |
-| regulation | EU | 0 (blocked) | 0 | — |
-| **Total** | | **31** | **370** | **100%** |
+| regulation | EU | 2 | 2,610 | 100% |
+| **Total** | | **33** | **2,980** | **100%** |
 
 ---
 
@@ -574,9 +586,9 @@ European banks operating in USD markets must comply with **both** OFAC and EU sa
 
 1. **No cross-list entity linking:** The same real-world entity across OFAC and EU records is not automatically matched
 2. **EU relationships not extracted:** 50% Rule chain analysis is OFAC-only
-3. **Regulation text not yet embedded:** Cannot answer "what activities are prohibited" for EU — only "who is designated" (code ready, blocked by RAM)
-4. **EU/DE jurisdiction documents missing:** No EU Commission FAQs, no German guidance (Bundesbank, BaFin, Ministry)
-5. **OFAC FAQs partially covered:** PDF guidance documents ingested, but the full HTML FAQ database (~1,200+ Q&As) not yet ingested
+3. **EU/DE jurisdiction documents missing:** No EU Commission FAQs, no German guidance (Bundesbank, BaFin, Ministry)
+4. **OFAC FAQs partially covered:** PDF guidance documents ingested, but the full HTML FAQ database (~1,200+ Q&As) not yet ingested
+5. **Development embedding model:** Multilingual MiniLM (384-dim) is adequate for current corpus size but should be upgraded to bge-m3 (1024-dim) for production deployment on 16GB+ RAM hardware
 
 ---
 
@@ -608,16 +620,17 @@ European banks operating in USD markets must comply with **both** OFAC and EU sa
    - `pipeline.extraction.extract_pdf()` for PDF text extraction (includes OCR cleaning)
    - `pipeline.chunking.text_chunker.TextChunker` for standard chunking
    - `pipeline.chunking.regulation_chunker.RegulationChunker` for article-aware regulation chunking
-   - `pipeline.embeddings.EmbeddingModel` for embedding generation
-   - `pipeline.chunk_store.store_document_chunks()` for storage (full-replace strategy)
+   - `pipeline.embeddings.EmbeddingModel` for embedding generation (reads model from `SSA_EMBEDDING_MODEL` env var)
+   - `pipeline.chunk_store.store_document_chunks()` for storage (full-replace strategy, accepts None embeddings for two-pass ingestion)
 4. Tag every chunk with `jurisdiction` (US/EU/DE) and `document_type` (enforcement/regulation/guidance/faq/general_license)
+5. For large documents on RAM-constrained machines, use two-pass ingestion: set `SSA_SKIP_EMBEDDINGS=true` to store chunks with NULL embeddings, then run `scripts/backfill_embeddings.py` to embed in batches
 
 ### Both Types
 
-5. Register in `runner.py`:
+6. Register in `runner.py`:
    ```python
    REGISTERED_SOURCES["new_source"] = ingest_new_source
    SOURCE_FILES["new_source"] = ["new_source/*.pdf"]
    ```
-6. Add a script in `scripts/ingest_new_source.py`
-7. Update this README's source inventory table
+7. Add a script in `scripts/ingest_new_source.py`
+8. Update this README's source inventory table
