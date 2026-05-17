@@ -7,7 +7,7 @@ Usage:
     docker run --rm --add-host=host.docker.internal:host-gateway \
       --memory=6g \
       -e SSA_DATABASE_URL="..." \
-      -e SSA_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2 \
+      -e SSA_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
       -e SSA_EMBEDDING_DIM=384 \
       -e BACKFILL_BATCH_SIZE=25 \
       sanctions-ingestion uv run python scripts/backfill_embeddings.py

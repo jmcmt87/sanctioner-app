@@ -1,5 +1,38 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 22: Switch Dev Embedding Model to Multilingual
+
+### Completed: Replace all-MiniLM-L6-v2 with paraphrase-multilingual-MiniLM-L12-v2
+
+Switched the dev embedding model from `sentence-transformers/all-MiniLM-L6-v2` (English-only, 90MB) to `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (50+ languages, 471MB). Same 384-dim output — no migration or dimension config changes needed.
+
+**Motivation:** The corpus is mixed EN/DE with EU legal terminology. The multilingual model handles German text natively, which better represents retrieval quality in dev even though prod will still use bge-m3.
+
+**Files changed (8):**
+- `.env.example` — default model + comment
+- `ingestion/pipeline/config.py` — default value
+- `ingestion/pipeline/embeddings.py` — `_DEFAULT_MODEL` constant
+- `ingestion/scripts/backfill_embeddings.py` — docstring docker example
+- `backend/app/config.py` — default value
+- `CLAUDE.md` (sanctioner-app) — tech stack table, embedding config section, memory-constrained section
+- `CLAUDE.md` (parent projects/) — same 3 locations
+- `progress.md` — this entry
+
+### Errors/Blockers Encountered
+- None. Model confirmed to exist on HuggingFace (HTTP 200) with 384-dim output.
+
+### Next Steps
+1. **Run the migration + ingestion + backfill sequence** (see `.tmp/next_steps_embedding_backfill.md`):
+   - `cd backend && uv run alembic upgrade head` (recreates vector column at 384-dim)
+   - Rebuild Docker image (will download the new 471MB model on first embed call)
+   - Ingest EU regs with `SSA_SKIP_EMBEDDINGS=true`
+   - Run `backfill_embeddings.py` (embeds all chunks with paraphrase-multilingual-MiniLM-L12-v2)
+   - Verify retrieval: Article 5b chunks should appear for deposit restriction queries
+2. Phase 1 checkpoint will then be fully complete — begin Phase 2 (Agent Core & Retrieval)
+3. First Phase 2 task: **2.1.1** LLM client abstraction
+
+---
+
 ## 2026-05-17 — Session 21: Configurable Embedding Model + Two-Pass Ingestion
 
 ### Completed: Unblock EU regulation ingestion on 8GB RAM machine
@@ -8,7 +41,7 @@ Implemented the full spec from `.tmp/eu_regulation_ingestion_ram_report.md` — 
 
 **Change 1 — Configurable Embedding Model**
 - `ingestion/pipeline/embeddings.py` — `EmbeddingModel` reads `SSA_EMBEDDING_MODEL` + `SSA_EMBEDDING_DIM` from env vars. Validates actual model dimension matches config on load. `dimension` property no longer requires loading the model.
-- `ingestion/pipeline/config.py` — Replaced `embedding_model_name`/`embedding_model_path` with `embedding_model` (default: `all-MiniLM-L6-v2`), `embedding_dim` (default: 384), `skip_embeddings` (default: false)
+- `ingestion/pipeline/config.py` — Replaced `embedding_model_name`/`embedding_model_path` with `embedding_model` (default: `paraphrase-multilingual-MiniLM-L12-v2`), `embedding_dim` (default: 384), `skip_embeddings` (default: false)
 - `backend/app/config.py` — Same: replaced with `embedding_model` + `embedding_dim`
 - `backend/app/db/models.py` — `DocumentChunk.embedding` uses `EMBEDDING_DIM` from env var instead of hardcoded 1024
 

@@ -17,7 +17,7 @@ AI-powered compliance research tool for dual-jurisdiction sanctions analysis (US
 | Agent Orchestration | LangGraph + LangChain | LangGraph for state machine routing. LangChain for SQL chains, retrievers, output parsers |
 | LLM | Mistral (swappable) | Dev: Mistral API. PoC: Ollama + Ministral 14B. Prod: vLLM + Mistral Large 3 |
 | Database | PostgreSQL 16 + pgvector | Single DB: structured entity tables + vector embeddings + metadata |
-| Embeddings | sentence-transformers (self-hosted) | Configurable via env vars. Dev: all-MiniLM-L6-v2 (384-dim, 90MB). Prod: BAAI/bge-m3 (1024-dim, 2.3GB) |
+| Embeddings | sentence-transformers (self-hosted) | Configurable via env vars. Dev: paraphrase-multilingual-MiniLM-L12-v2 (384-dim, 471MB, multilingual). Prod: BAAI/bge-m3 (1024-dim, 2.3GB) |
 | Data Lake | AWS S3 | Raw document storage. SSE-KMS encrypted. Source of truth for ingestion |
 | Observability | LangSmith + Prometheus | Agent decision tracing, query routing visibility |
 | Python Tooling | uv | Package management, virtual environments, script running |
@@ -40,7 +40,7 @@ All LLM calls go through a single abstraction layer so swapping providers requir
 The embedding model is swappable via environment variables, same principle as the LLM.
 
 ```
-SSA_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2  # Dev default (90MB, 384-dim)
+SSA_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2  # Dev default (471MB, 384-dim, multilingual)
 SSA_EMBEDDING_DIM=384
 
 # Production:
@@ -228,7 +228,7 @@ Rules: every record carries `data_vintage` + `ingestion_timestamp`. Every API re
 The dev machine has 8GB RAM. PyTorch is not compatible with the host OS, so all
 embedding work runs in Docker. To avoid OOM during ingestion:
 
-1. Use `all-MiniLM-L6-v2` (90MB) as the dev embedding model, not `bge-m3` (2.3GB)
+1. Use `paraphrase-multilingual-MiniLM-L12-v2` (471MB) as the dev embedding model, not `bge-m3` (2.3GB)
 2. For large document ingestion, use two-pass mode: set `SSA_SKIP_EMBEDDINGS=true`
    to store text chunks first, then run `backfill_embeddings.py` to embed in batches
 3. Docker memory limit: `--memory=6g` to leave room for the host OS

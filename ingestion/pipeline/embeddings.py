@@ -7,7 +7,7 @@ import structlog
 
 logger = structlog.get_logger()
 
-_DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 _DEFAULT_DIM = 384
 
 

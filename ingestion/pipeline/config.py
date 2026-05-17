@@ -20,7 +20,7 @@ class IngestionConfig(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
     skip_embeddings: bool = False
 
