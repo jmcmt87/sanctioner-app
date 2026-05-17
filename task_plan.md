@@ -171,7 +171,7 @@
 - [x] Vessel records extracted and queryable by IMO number, with vessel_name and build_year
 - [x] Entity relationships populated where extractable from source data
 - [x] Incremental update logic working for sanctions lists
-- [ ] Automated acquisition scripts download SDN, Non-SDN, and EU list files from source websites with hash-based change detection (1.2.5)
+- [x] Automated acquisition scripts download SDN, Non-SDN, and EU list files from source websites with hash-based change detection (1.2.5)
 - [x] S3 bucket organized with raw source files
 - [x] Ingestion log tracking all runs
 - [x] Embedding model setup (1.3.1) — BAAI/bge-m3 wrapper with lazy loading in pipeline/embeddings.py

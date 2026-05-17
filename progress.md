@@ -1,5 +1,45 @@
 # Progress Log — Sanctions Screening Assistant
 
+## 2026-05-17 — Session 16: Automated Data Acquisition Scripts (Task 1.2.5)
+
+### Completed: Automated download scripts for all structured sanctions list sources
+
+**New module: `ingestion/pipeline/acquisition.py`**
+- Defines download URLs for OFAC SDN (4 files), OFAC Non-SDN (4 files), EU Consolidated XML (1 file)
+- `_download_with_retry()` — async download with exponential backoff (3 attempts)
+- `_archive_file()` — timestamped copies in `archive/` subdirectory for audit trail
+- SHA-256 hash-based change detection via `HashStore` — re-downloading unchanged files is a no-op
+- 1-second rate limiting between requests to government sites
+- Partial failure handling (downloads what it can, logs what fails)
+
+**New script: `ingestion/scripts/download_sources.py`**
+- `uv run python -m scripts.download_sources` — downloads all sources
+- `--source ofac_sdn|ofac_nonsdn|eu_consolidated` — single source mode
+- Exit code 1 if any source completely failed
+
+**New tests: `ingestion/tests/test_acquisition.py`**
+- 11 unit tests covering: archive creation, multi-file download, change detection (unchanged = no-op), partial failures, total failures, per-source directory correctness, all-sources orchestration
+- All pass in 0.17s
+
+**Diagnostics report: `.tmp/venv-issues-report.md`**
+- Root-caused the venv confusion: `uv run` from repo root silently skips the venv (no workspace `pyproject.toml`)
+- Identified langchain-core 1.4 / langchain-text-splitters 1.1 incompatibility breaking 10 test files
+- Both fixes documented for next session
+
+### Errors/Blockers Encountered
+- `uv run` from repo root uses bare Python (no venv) — caused false `ModuleNotFoundError` for httpx
+- langchain version incompatibility (pre-existing) — 10 test files fail to collect; unrelated to this task
+- Ruff ASYNC240 flagged `pathlib.mkdir()` inside async function — fixed with `asyncio.to_thread()`
+
+### Next Steps
+1. Fix the two bugs documented in `.tmp/venv-issues-report.md`:
+   - Add workspace `pyproject.toml` at repo root
+   - Pin `langchain-core<1.4` in `ingestion/pyproject.toml` and re-lock
+2. Phase 1 checkpoint is now fully complete — begin Phase 2 (Agent Core & Retrieval)
+3. First Phase 2 task: **2.1.1** LLM client abstraction
+
+---
+
 ## 2026-05-17 — Session 15: Architecture Audit + Fix All Findings
 
 ### Completed: Full-scope architecture audit, 4 audit fixes, task plan update
